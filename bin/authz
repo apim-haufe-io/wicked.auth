@@ -1,0 +1,142 @@
+#!/usr/bin/env node
+
+'use strict';
+
+const app = require('../app');
+const async = require('async');
+const debug = require('debug')('portal-auth:server');
+const http = require('http');
+const passport = require('passport');
+const wicked = require('wicked-sdk');
+const utils = require('../providers/utils.js');
+
+let authServerId = 'default';
+if (process.env.AUTH_SERVER_NAME) {
+    authServerId = process.env.AUTH_SERVER_NAME;
+}
+app.set('server_name', authServerId);
+let authServerPath = '/auth';
+if (process.env.AUTH_SERVER_BASEPATH) {
+    authServerPath = process.env.AUTH_SERVER_BASEPATH;
+}
+app.set('base_path', authServerPath);
+
+console.log('Auth Server ID used: ' + authServerId + ', override with AUTH_SERVER_NAME.');
+console.log('Auth Server base path: ' + authServerPath + ', override with AUTH_SERVER_BASEPATH');
+
+var port = normalizePort(process.env.PORT || '3010');
+app.set('port', port);
+
+const google = require('../providers/google');
+const github = require('../providers/github');
+const twitter = require('../providers/twitter');
+const facebook = require('../providers/facebook');
+const adfs = require('../providers/adfs');
+
+/**
+ * Create HTTP server.
+ */
+
+let server = null;
+
+const wickedOptions = {
+    userAgentName: 'wicked.portal-auth',
+    userAgentVersion: utils.getVersion()
+};
+
+async.series({
+    init: callback => wicked.initialize(wickedOptions, callback),
+    // waitForKong: callback => wicked.awaitKongOAuth2(callback),
+    initMachineUser: callback => wicked.initMachineUser(authServerId, callback),
+    authServerConfig: callback => wicked.apiGet('auth-servers/' + authServerId, callback),
+}, function (err, results) {
+    if (err) {
+        console.error(err);
+        throw err;
+    }
+
+    app.initApp(results.authServerConfig, function (err) {
+        if (err) {
+            console.error(err);
+            throw err;
+        }
+
+        app.glob = wicked.getGlobals();
+        //console.log(app.authConfig);
+
+        // google.init(app, app.authConfig);
+        // github.init(app, app.authConfig);
+        // twitter.init(app, app.authConfig);
+        // facebook.init(app, app.authConfig);
+        // adfs.init(app, app.authConfig);
+
+        // Simplest kind of serialization and deserialization
+        passport.serializeUser(function (user, done) {
+            done(null, user);
+        });
+
+        passport.deserializeUser(function (user, done) {
+            done(null, user);
+        });
+
+        //console.log('Kong OAuth2 Service: ' + wicked.getInternalKongOAuth2Url());
+
+        // Now create the server
+        server = http.createServer(app);
+
+        // Listen on provided port, on all network interfaces.
+        server.listen(port);
+        server.on('error', onError);
+        server.on('listening', onListening);
+    });
+});
+
+// Normalize a port into a number, string, or false.
+function normalizePort(val) {
+    const port = parseInt(val, 10);
+
+    if (isNaN(port)) {
+        // named pipe
+        return val;
+    }
+
+    if (port >= 0) {
+        // port number
+        return port;
+    }
+
+    return false;
+}
+
+// Event listener for HTTP server "error" event.
+function onError(error) {
+    if (error.syscall !== 'listen') {
+        throw error;
+    }
+
+    const bind = typeof port === 'string' ? 'Pipe ' + port : 'Port ' + port;
+
+    // handle specific listen errors with friendly messages
+    switch (error.code) {
+        case 'EACCES':
+            console.error(bind + ' requires elevated privileges');
+            process.exit(1);
+            break;
+        case 'EADDRINUSE':
+            console.error(bind + ' is already in use');
+            process.exit(1);
+            break;
+        default:
+            throw error;
+    }
+}
+
+// Event listener for HTTP server "listening" event.
+function onListening() {
+    const addr = server.address();
+    const bind = typeof addr === 'string' ? 'pipe ' + addr : 'port ' + addr.port;
+    console.log('=========================================');
+    console.log('========== INITIALIZATION DONE ==========');
+    console.log('=========================================');
+    debug('Listening on ' + bind);
+}

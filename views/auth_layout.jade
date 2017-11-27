@@ -1,0 +1,35 @@
+doctype html
+html
+  head
+    title #{title}
+    title Authorization Server
+    link(rel='stylesheet', href='#{baseUrl}/bootstrap/css/bootstrap.min.css')
+    link(rel='stylesheet', href='#{baseUrl}/content/wicked.css')
+    //- link(rel="stylesheet", href="//cdnjs.cloudflare.com/ajax/libs/highlight.js/9.3.0/styles/default.min.css")
+    //- link(rel="stylesheet" href="https://maxcdn.bootstrapcdn.com/font-awesome/4.6.1/css/font-awesome.min.css")
+    //- script(src="//cdnjs.cloudflare.com/ajax/libs/highlight.js/9.3.0/highlight.min.js")
+    
+    block scripts
+
+  body(style='background-color:#eeeeee')
+
+    .container
+        span.center-block
+
+    .container
+        .row
+            .col-md-12
+                div(style='margin-left:auto;margin-right:auto;text-align:center')
+                    a(href='#{portalUrl}')
+                        img(src='#{baseUrl}/content/images/wicked-auth-page-120.png')
+                        //img(src='/images/wicked-text-64.png')
+            .col-md-6.col-md-offset-3
+                .panel.panel-default
+                    .panel-body
+                        .jumbotron.wicked-login-title
+                            
+                            block content
+
+    script(src='#{baseUrl}/jquery/jquery.min.js')
+    script(src='#{baseUrl}/bootstrap/js/bootstrap.min.js')
+ 
