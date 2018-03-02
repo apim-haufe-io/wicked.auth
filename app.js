@@ -8,11 +8,11 @@ const path = require('path');
 const logger = require('morgan');
 const wicked = require('wicked-sdk');
 const passport = require('passport');
-const csurf = require('csurf');
+//const csurf = require('csurf');
 
 const session = require('express-session');
 // const FileStore = require('session-file-store')(session);
-const redisConnection = require('./providers/redis-connection');
+const redisConnection = require('./common/redis-connection');
 
 const google = require('./providers/google');
 const github = require('./providers/github');
@@ -20,9 +20,11 @@ const twitter = require('./providers/twitter');
 const facebook = require('./providers/facebook');
 const adfs = require('./providers/adfs');
 
-const LocalAuth = require('./providers/local');
+const LocalIdP = require('./providers/local');
+const DummyIdP = require('./providers/dummy');
 
-const utils = require('./providers/utils');
+const utils = require('./common/utils');
+const utilsOAuth2 = require('./common/utils-oauth2');
 
 // Use default options, see https://www.npmjs.com/package/session-file-store
 const sessionStoreOptions = {};
@@ -77,7 +79,7 @@ app.initApp = function (authServerConfig, callback) {
     });
     app.use(logger('{"date":":date[clf]","method":":method","url":":url","remote-addr":":remote-addr","version":":http-version","status":":status","content-length":":res[content-length]","referrer":":referrer","response-time":":response-time","correlation-id":":correlation-id"}'));
 
-    const csrfProtection = csurf({ cookie: true });
+    //const csrfProtection = csurf({ cookie: true });
     app.use(bodyParser.json());
     app.use(bodyParser.urlencoded({ extended: false }));
 
@@ -117,7 +119,11 @@ app.initApp = function (authServerConfig, callback) {
         debug(`Activating auth method ${authMethod.name} with type ${authMethod.type}.`);
         switch (authMethod.type) {
             case "local":
-                app.use(authUri, new LocalAuth(basePath, authMethod.name, csrfProtection));
+                app.use(authUri, new LocalIdP(basePath, authMethod.name).getRouter());
+                //app.use(authUri, new LocalAuth(basePath, authMethod.name, csrfProtection));
+                break;
+            case "dummy":
+                app.use(authUri, new DummyIdP(basePath, authMethod.name).getRouter());
                 break;
             default:
                 console.error('ERROR: Unknown authMethod type ' + authMethod.type);
@@ -145,6 +151,8 @@ app.initApp = function (authServerConfig, callback) {
 
     //     res.json(req.session.passport.user);
     // });
+
+    app.get(basePath + '/profile', utilsOAuth2.getProfile);
 
     app.get(basePath + '/failure', function (req, res, next) {
         debug(basePath + '/failure');
@@ -179,7 +187,21 @@ app.initApp = function (authServerConfig, callback) {
             console.error(err.stack);
         }
         res.status(err.status || 500);
-        if (!err.oauthError) {
+        // From failJson?
+        if (err.issueAsJson) {
+            res.json({
+                status: err.status || 500,
+                message: err.message,
+                internal_error: err.internalError
+            });
+        } else if (err.oauthError) {
+            // From failOAuth
+            // RFC 6749 compatible JSON error
+            res.json({
+                error: err.oauthError,
+                error_description: err.message
+            });
+        } else {
             res.render('error', {
                 title: 'Error',
                 portalUrl: wicked.getExternalPortalUrl(),
@@ -187,12 +209,6 @@ app.initApp = function (authServerConfig, callback) {
                 correlationId: req.correlationId,
                 message: err.message,
                 status: err.status
-            });
-        } else {
-            // RFC 6749 compatible JSON error
-            res.json({
-                error: err.oauthError,
-                error_description: err.message
             });
         }
     });

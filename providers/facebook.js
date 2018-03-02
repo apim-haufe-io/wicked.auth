@@ -5,7 +5,8 @@ const passport = require('passport');
 const FacebookStrategy = require('passport-facebook');
 const request = require('request');
 
-const utils = require('./utils');
+const utils = require('../common/utils');
+const { failMessage, failError, failOAuth, makeError } = require('../common/utils-fail');
 
 const facebook = require('express').Router();
 

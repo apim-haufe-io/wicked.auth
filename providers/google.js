@@ -6,7 +6,7 @@ const GoogleStrategy = require('passport-google-oauth20').Strategy;
 const debug = require('debug')('auth-passport:google');
 const wicked = require('wicked-sdk');
 
-const utils = require('./utils');
+const utils = require('../common/utils');
 
 google.authenticateSettings = {
     failureRedirect: '/auth-server/failure'

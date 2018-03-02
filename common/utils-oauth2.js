@@ -1,64 +1,23 @@
 'use strict';
 
-const async = require('async');
-const cors = require('cors');
-const debug = require('debug')('portal-auth:utils');
+const debug = require('debug')('portal-auth:utils-oauth2');
 const wicked = require('wicked-sdk');
-const { oauth2, tokens } = require('wicked-kong-oauth2');
-const url = require('url');
-const fs = require('fs');
-const path = require('path');
 const request = require('request');
 
-const profileStore = require('./profile-store');
 const { failMessage, failError, failOAuth, makeError } = require('./utils-fail');
+const profileStore = require('./profile-store');
 
-const utils = function () { };
+const oauth2 = require('../kong-oauth2/oauth2');
+const tokens = require('../kong-oauth2/tokens');
 
-utils.jsonError = function (res, message, status) {
-    debug('Error ' + status + ': ' + message);
-    res.status(status).json({ message: message });
-};
+const utilsOAuth2 = function() {};
 
-utils.getJson = function (ob) {
-    if (ob instanceof String || typeof ob === "string")
-        return JSON.parse(ob);
-    return ob;
-};
-
-utils.isPublic = function (uriName) {
-    return uriName.endsWith('jpg') ||
-        uriName.endsWith('jpeg') ||
-        uriName.endsWith('png') ||
-        uriName.endsWith('gif') ||
-        uriName.endsWith('css');
-};
-
-utils.pipe = function (req, res, uri) {
-    let apiUrl = wicked.getInternalApiUrl();
-    if (!apiUrl.endsWith('/'))
-        apiUrl += '/';
-    apiUrl += uri;
-    request.get({
-        url: apiUrl
-    }).pipe(res);
-};
-
-utils.serveStaticContent = require('express').Router();
-utils.serveStaticContent.get('/*', function (req, res, next) {
-    debug('serveStaticContent ' + req.path);
-    if (utils.isPublic(req.path)) {
-        return utils.pipe(req, res, 'content' + req.path);
-    }
-    res.status(404).json({ message: 'Not found.' });
-});
-
-utils._apiScopes = {};
-utils.getApiScopes = function (apiId, callback) {
+utilsOAuth2._apiScopes = {};
+utilsOAuth2.getApiScopes = function (apiId, callback) {
     debug(`getApiScopes(${apiId})`);
     // Check cache first
-    if (utils._apiScopes[apiId])
-        return callback(null, utils._apiScopes[apiId]);
+    if (utilsOAuth2._apiScopes[apiId])
+        return callback(null, utilsOAuth2._apiScopes[apiId]);
     debug('getApiScopes: Not present in cache, fetching.');
     wicked.apiGet(`apis/${apiId}`, function (err, api) {
         if (err) {
@@ -71,22 +30,22 @@ utils.getApiScopes = function (apiId, callback) {
             return callback(new Error(`API ${apiId} does not have settings section`));
         debug('getApiScopes: Succeeded, storing.');
         debug('api.settings.scopes: ' + JSON.stringify(api.settings.scopes));
-        utils._apiScopes[apiId] = api.settings.scopes || {};
-        return callback(null, utils._apiScopes[apiId]);
+        utilsOAuth2._apiScopes[apiId] = api.settings.scopes || {};
+        return callback(null, utilsOAuth2._apiScopes[apiId]);
     });
 };
 
-utils.validateAuthorizeRequest = function (authRequest, callback) {
+utilsOAuth2.validateAuthorizeRequest = function (authRequest, callback) {
     debug(`validateAuthorizeRequest(${authRequest})`);
     if (authRequest.response_type !== 'token' &&
         authRequest.response_type !== 'code')
         return failMessage(400, `Invalid response_type ${authRequest.response_type}`, callback);
     if (!authRequest.client_id)
         return failMessage(400, 'Invalid or empty client_id.', callback);
-    return utils.validateSubscription(authRequest.client_id, authRequest.api_id, callback);
+    return utilsOAuth2.validateSubscription(authRequest.client_id, authRequest.api_id, callback);
 };
 
-utils.validateSubscription = function (clientId, apiId, callback) {
+utilsOAuth2.validateSubscription = function (clientId, apiId, callback) {
     debug('validateSubscription()');
     wicked.getSubscriptionByClientId(clientId, apiId, function (err, subsInfo) {
         if (err)
@@ -106,10 +65,10 @@ utils.validateSubscription = function (clientId, apiId, callback) {
     });
 };
 
-utils.validateApiScopes = function (apiId, scope, subIsTrusted, callback) {
+utilsOAuth2.validateApiScopes = function (apiId, scope, subIsTrusted, callback) {
     debug(`validateApiScopes(${apiId}, ${scope})`);
 
-    utils.getApiScopes(apiId, function (err, apiScopes) {
+    utilsOAuth2.getApiScopes(apiId, function (err, apiScopes) {
         if (err)
             return failError(500, err, callback);
 
@@ -153,7 +112,7 @@ utils.validateApiScopes = function (apiId, scope, subIsTrusted, callback) {
     });
 };
 
-utils.makeTokenRequest = function (req, apiId, authMethodId) {
+utilsOAuth2.makeTokenRequest = function (req, apiId, authMethodId) {
     // Gather parameters from body. Note that not all parameters
     // are used in all flows.
     return {
@@ -171,7 +130,7 @@ utils.makeTokenRequest = function (req, apiId, authMethodId) {
     };
 };
 
-utils.validateTokenRequest = function (tokenRequest, callback) {
+utilsOAuth2.validateTokenRequest = function (tokenRequest, callback) {
     debug(`validateTokenRequest(${tokenRequest})`);
 
     if (!tokenRequest.grant_type)
@@ -212,13 +171,13 @@ utils.validateTokenRequest = function (tokenRequest, callback) {
     return callback(null);
 };
 
-utils.tokenClientCredentials = function (tokenRequest, callback) {
+utilsOAuth2.tokenClientCredentials = function (tokenRequest, callback) {
     debug('tokenClientCredentials()');
     // We can just pass this on to the wicked SDK.
     oauth2.token(tokenRequest, callback);
 };
 
-utils.tokenAuthorizationCode = function (tokenRequest, callback) {
+utilsOAuth2.tokenAuthorizationCode = function (tokenRequest, callback) {
     debug('tokenAuthorizationCode()');
     // We can just pass this on to the wicked SDK, and the register the token.
     oauth2.token(tokenRequest, (err, accessToken) => {
@@ -239,38 +198,36 @@ utils.tokenAuthorizationCode = function (tokenRequest, callback) {
     });
 };
 
-utils.getProfile = function (authMethodId) {
-    return function (req, res, next) {
-        debug(`/${authMethodId}/api/<any api>/profile`);
-        // OIDC profile end point, we need this. This is nice. Yeah.
-        // res.status(500).json({ message: 'Not yet implemented.' });
+utilsOAuth2.getProfile = function (req, res, next) {
+    debug(`/profile`);
+    // OIDC profile end point, we need this. This is nice. Yeah.
+    // res.status(500).json({ message: 'Not yet implemented.' });
 
-        const bearerToken = req.get('authorization');
-        if (!bearerToken)
-            return failMessage(403, 'Unauthorized', next);
-        let accessToken = null;
-        if (bearerToken.indexOf(' ') > 0) {
-            // assume Bearer xxx
-            let tokenSplit = bearerToken.split(' ');
-            if (tokenSplit.length !== 2)
-                return failOAuth(400, 'invalid_request', 'Invalid Bearer token.', next);
-            accessToken = bearerToken.split(' ')[1];
-        } else {
-            // Assume without "Bearer", just the access token
-            accessToken = bearerToken;
-        }
-        accessToken = accessToken.trim();
+    const bearerToken = req.get('authorization');
+    if (!bearerToken)
+        return failMessage(403, 'Unauthorized', next);
+    let accessToken = null;
+    if (bearerToken.indexOf(' ') > 0) {
+        // assume Bearer xxx
+        let tokenSplit = bearerToken.split(' ');
+        if (tokenSplit.length !== 2)
+            return failOAuth(400, 'invalid_request', 'Invalid Bearer token.', next);
+        accessToken = bearerToken.split(' ')[1];
+    } else {
+        // Assume without "Bearer", just the access token
+        accessToken = bearerToken;
+    }
+    accessToken = accessToken.trim();
 
-        // Read from profile store.
-        profileStore.retrieve(accessToken, (err, profile) => {
-            if (err || !profile)
-                return failOAuth(404, 'invalid_request', 'Not found', next);
-            return res.status(200).json(profile);
-        });
-    };
+    // Read from profile store.
+    profileStore.retrieve(accessToken, (err, profile) => {
+        if (err || !profile)
+            return failOAuth(404, 'invalid_request', 'Not found', next);
+        return res.status(200).json(profile);
+    });
 };
 
-utils.wickedUserInfoToOidcProfile = function (userInfo, callback) {
+utilsOAuth2.wickedUserInfoToOidcProfile = function (userInfo, callback) {
     debug('wickedUserInfoToOidcProfile()');
     // This is subject to heavy change, possibly and probably, and
     // will also consist of fetching a profile/registration info from
@@ -280,8 +237,8 @@ utils.wickedUserInfoToOidcProfile = function (userInfo, callback) {
         email: userInfo.email,
         email_verified: userInfo.validated,
         given_name: userInfo.firstName,
-        family_name: userInfo.lastName,
-        admin: userInfo.admin
+        family_name: userInfo.lastName
+        // admin: userInfo.admin // No no noooo
     };
     return callback(null, oidcProfile);
 };
@@ -388,123 +345,4 @@ utils.wickedUserInfoToOidcProfile = function (userInfo, callback) {
 //     };
 // };
 
-utils.splitName = function (fullName, username) {
-    debug('splitName(): fullName = ' + fullName + ', username = ' + username);
-    var name = {
-        firstName: '',
-        lastName: fullName,
-        fullName: fullName
-    };
-    if (!fullName) {
-        if (username) {
-            name.lastName = username;
-            name.fullName = username;
-        } else {
-            name.lastName = 'Unknown';
-            name.fullName = 'Unknown';
-        }
-    } else {
-        var spaceIndex = fullName.indexOf(' ');
-        if (spaceIndex < 0)
-            return name;
-        name.firstName = fullName.substring(0, spaceIndex);
-        name.lastName = fullName.substring(spaceIndex + 1);
-    }
-    debug(name);
-    return name;
-};
-
-utils.makeFullName = function (familyName, givenName) {
-    if (familyName && givenName)
-        return givenName + ' ' + familyName;
-    if (familyName)
-        return familyName;
-    if (givenName)
-        return givenName;
-    return 'Unknown Username';
-};
-
-utils.makeUsername = function (fullName, username) {
-    debug('makeUsername(): fullName = ' + fullName + ', username = ' + username);
-    if (username)
-        return username;
-    return fullName;
-};
-
-const _validCorsHosts = {};
-function storeRedirectUriForCors(uri) {
-    debug('storeRedirectUriForCors() ' + uri);
-    try {
-        const parsedUri = url.parse(uri);
-        const host = parsedUri.protocol + '//' + parsedUri.host;
-        _validCorsHosts[host] = true;
-        debug(_validCorsHosts);
-    } catch (ex) {
-        console.error('storeRedirectUriForCors() - Invalid URI: ' + uri);
-    }
-}
-
-function isCorsHostValid(host) {
-    debug('isCorsHostValid(): ' + host);
-    if (_validCorsHosts[host]) {
-        debug('Yes, ' + host + ' is valid.');
-        return true;
-    }
-    debug('*** ' + host + ' is not a valid CORS origin.');
-    return false;
-}
-
-const _allowOptions = {
-    origin: true,
-    credentials: true,
-    allowedHeaders: [
-        'Accept',
-        'Accept-Encoding',
-        'Connection',
-        'User-Agent',
-        'Content-Type',
-        'Cookie',
-        'Host',
-        'Origin',
-        'Referer'
-    ]
-};
-
-const _denyOptions = {
-    origin: false
-};
-
-utils.cors = function () {
-    const optionsDelegate = (req, callback) => {
-        const origin = req.header('Origin');
-        debug('in CORS options delegate. req.headers = ');
-        debug(req.headers);
-        if (isCorsHostValid(origin))
-            callback(null, _allowOptions); // Mirror origin, it's okay
-        else
-            callback(null, _denyOptions);
-    };
-    return cors(optionsDelegate);
-};
-
-utils._packageVersion = null;
-utils.getVersion = function () {
-    if (!utils._packageVersion) {
-        const packageFile = path.join(__dirname, '..', 'package.json');
-        if (fs.existsSync(packageFile)) {
-            try {
-                const packageInfo = JSON.parse(fs.readFileSync(packageFile, 'utf8'));
-                if (packageInfo.version)
-                    utils._packageVersion = packageInfo.version;
-            } catch (ex) {
-                console.error(ex);
-            }
-        }
-        if (!utils._packageVersion) // something went wrong
-            utils._packageVersion = "0.0.0";
-    }
-    return utils._packageVersion;
-};
-
-
-module.exports = utils;
+module.exports = utilsOAuth2;

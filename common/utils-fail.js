@@ -9,12 +9,19 @@ failUtils.makeError = function (message, status) {
     return err;
 };
 
+// Makes sure the application fails with a HTML generated error
+// message; use for UI failures.
 failUtils.failMessage = function (statusCode, message, callback) {
     const err = new Error(message);
     err.status = statusCode;
     return callback(err);
 };
 
+// Makes sure the app returns a OAuth2 compliant error message:
+// {
+//   "error": "some oauth2 error",
+//   "error_description": "nice description"   
+// }
 failUtils.failOAuth = function (statusCode, error, message, internalError, callback) {
     const err = new Error(message);
     err.oauthError = error;
@@ -23,6 +30,23 @@ failUtils.failOAuth = function (statusCode, error, message, internalError, callb
         callback = internalError;
     else
         err.internalError = internalError;
+    return callback(err);
+};
+
+// Makes sure the app returns a JSON error message
+// {
+//   "status": <status code>
+//   "message": "the message"
+//   "error": <the internal error if applicable>
+// }
+failUtils.failJson = function (status, message, internalErrorOrCallback, callback) {
+    const err = new Error(message);
+    err.issueAsJson = true;
+    err.status = status;
+    if (typeof (internalErrorOrCallback) === 'function')
+        callback = internalErrorOrCallback;
+    else
+        err.internalError = internalErrorOrCallback;
     return callback(err);
 };
 

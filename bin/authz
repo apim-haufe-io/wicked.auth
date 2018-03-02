@@ -8,7 +8,7 @@ const debug = require('debug')('portal-auth:server');
 const http = require('http');
 const passport = require('passport');
 const wicked = require('wicked-sdk');
-const utils = require('../providers/utils.js');
+const utils = require('../common/utils.js');
 
 let authServerId = 'default';
 if (process.env.AUTH_SERVER_NAME) {

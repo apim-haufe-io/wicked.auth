@@ -1,0 +1,58 @@
+extends auth_layout
+
+block scripts
+    if authUser
+        meta(http-equiv="refresh" content="0; url=/")
+
+block content
+    h2 Log in
+    
+    p Welcome to the #{title}.
+
+    if displayRedirectMessage
+        h4 You will be redirected to the desired page right after successfully logging in.
+
+    //- if glob.auth.adfs && glob.auth.adfs.useAdfs
+    //-     a(href='/login/adfs').btn.btn-block.btn-lg.btn-primary
+    //-         i.fa.fa-cloud.fa-lg
+    //-         span &nbsp; Login with ADFS
+    //- if glob.auth.github && glob.auth.github.useGithub
+    //-     a(href="/login/github").btn.btn-lg.btn-block.btn-github
+    //-         i.fa.fa-github.fa-lg
+    //-         span &nbsp; Log in with GitHub
+    //- if glob.auth.google && glob.auth.google.useGoogle
+    //-     a(href="/login/google").btn.btn-lg.btn-block.btn-google
+    //-         i.fa.fa-google.fa-lg
+    //-         span &nbsp; Log in with Google
+
+    //- if glob.auth.local && glob.auth.local.useLocal
+    //-     br                            
+    //-     hr
+    //-     br
+
+    if errorMessage
+        div(role='alert').alert.alert-danger
+            span(aria-hidden="true").glyphicon.glyphicon-exclamation-sign
+            span.sr-only Error:
+            | &nbsp; #{errorMessage}
+
+    form(role='form' action='#{baseUrl}/#{loginUrl}' method='post')
+
+        input(type='hidden' name='_csrf' value='#{csrfToken}')
+
+        //- .form-group
+        //-     label(for='username') Username:
+        //-     input(type='string' name='username' id='username').form-control
+        //-     small 
+        //-         span(id='errorUsername' style='color:red')
+        //- .form-group
+        //-     label(for='password') Password:
+        //-     input(type='password' name='password' id='password').form-control
+        //-     small
+        //-         span(id='errorPassword' style='color:red')
+        button(class='btn btn-lg btn-primary btn-block' type='submit') Login
+    
+    //- h5
+    //-     a(href='/forgotpassword') Forgot password?
+    //- h5
+    //-     a(href='/signup') Create a new user.

@@ -9,7 +9,7 @@ const wicked = require('wicked-sdk');
 
 const adfs = require('express').Router();
 
-const utils = require('./utils');
+const utils = require('../common/utils');
 
 adfs.authenticateSettings = {
     failureRedirect: '/auth-server/failure'

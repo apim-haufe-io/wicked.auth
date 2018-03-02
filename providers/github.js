@@ -6,7 +6,7 @@ const GithubStrategy = require('passport-github2');
 const wicked = require('wicked-sdk');
 const debug = require('debug')('auth-passport:github');
 
-const utils = require('./utils');
+const utils = require('../common/utils');
 
 const github = require('express').Router();
 

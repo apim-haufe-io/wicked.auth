@@ -7,7 +7,7 @@ const qs = require('querystring');
 
 const debug = require('debug')('portal-auth:profile-store');
 const redisConnection = require('./redis-connection');
-const { failMessage, failError, failOAuth, makeError } = require('./utils-fail');
+const { failMessage, failError, failOAuth, makeError } = require('../common/utils-fail');
 
 const profileStore = function () { };
 
@@ -32,13 +32,15 @@ profileStore.getTtlSeconds = function (apiId, callback) {
 };
 
 profileStore.registerTokenOrCode = function (tokenResponse, apiId, profile, callback) {
+    debug(`registerTokenOrCode(${apiId})`);
     if (tokenResponse.access_token) {
         // Easy case, it's a JSON answer
+        debug(`registerTokenOrCode: Token ${tokenResponse.access_token}`);
         return profileStore.store(tokenResponse.access_token, apiId, profile, callback);
     } else if (tokenResponse.redirect_uri) {
         // It's the answer from an implicit token, let's parse the URL
         const redir = new URL(tokenResponse.redirect_uri);
-        debug(redir);
+        debug(`registerTokenOrCode: Redir ${redir}`);
         if (redir.hash) {
             if (!redir.hash.startsWith('#'))
                 return failMessage(500, 'registerToken: The redirect URI fragment does not start with a hash tag', callback);

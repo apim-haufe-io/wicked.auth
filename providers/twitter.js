@@ -5,7 +5,7 @@ const passport = require('passport');
 const request = require('request');
 const TwitterStrategy = require('passport-twitter');
 
-const utils = require('./utils');
+const utils = require('../common/utils');
 
 const twitter = require('express').Router();
 
