@@ -154,6 +154,19 @@ app.initApp = function (authServerConfig, callback) {
 
     app.get(basePath + '/profile', utilsOAuth2.getProfile);
 
+    app.get(basePath + '/logout', function (req, res, next) {
+        debug(basePath + '/logout');
+        req.session.destroy();
+        if (req.query && req.query.redirect_uri)
+            return res.redirect(req.query.redirect_uri);
+        res.render('logout', {
+            title: 'Logged out',
+            portalUrl: wicked.getExternalPortalUrl(),
+            baseUrl: req.app.get('base_path'),
+            correlationId: req.correlationId,
+        });
+    });
+
     app.get(basePath + '/failure', function (req, res, next) {
         debug(basePath + '/failure');
 

@@ -227,6 +227,16 @@ utilsOAuth2.getProfile = function (req, res, next) {
     });
 };
 
+function makeFullName(userInfo) {
+    if (userInfo.firstName && userInfo.lastName)
+        return `${userInfo.firstName} ${userInfo.lastName}`;
+    else if (userInfo.lastName)
+        return userInfo.lastName;
+    else if (userInfo.firstName)
+        return userInfo.firstName;
+    return "No Name";
+}
+
 utilsOAuth2.wickedUserInfoToOidcProfile = function (userInfo, callback) {
     debug('wickedUserInfoToOidcProfile()');
     // This is subject to heavy change, possibly and probably, and
@@ -236,6 +246,7 @@ utilsOAuth2.wickedUserInfoToOidcProfile = function (userInfo, callback) {
         sub: userInfo.id,
         email: userInfo.email,
         email_verified: userInfo.validated,
+        name: makeFullName(userInfo),
         given_name: userInfo.firstName,
         family_name: userInfo.lastName
         // admin: userInfo.admin // No no noooo
