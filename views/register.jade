@@ -1,0 +1,95 @@
+extends auth_layout
+
+block scripts
+    //- if authUser
+    //-     meta(http-equiv="refresh" content="0; url=/")
+    script(type='text/javascript').
+        function validateRegister() {
+            //- var username = $('#username').val();
+            //- var password = $('#password').val();
+            //- var password2 = $('#password2').val();
+            //- var usernameError = '';
+            //- var passwordError = '';
+            //- var password2Error = '';
+            //- if (!username)
+            //-     usernameError = 'Please enter a value for the username. ';
+            //- else if (!/.+@.+/.test(username))
+            //-     usernameError = 'Username has to be a valid email address.';
+            //- if (!password)
+            //-     passwordError = 'Please enter your password.';
+            //- if (!password2)
+            //-     password2Error = 'Please repeat your password.';
+            //- if (!password2Error && password !== password2)
+            //-     password2Error = 'Passwords do not match';
+
+            //- try {
+            //-     $('#errorUsername').text(usernameError);
+            //-     $('#errorPassword').text(passwordError);
+            //-     $('#errorPassword2').text(password2Error);
+            //- } catch (err) {
+            //-     alert('Validation errored! Check your input values.');
+            //-     return false;
+            //- }
+            
+            //- var somethingBad = !!usernameError
+            //-     || !!passwordError
+            //-     || !!password2Error;
+
+            var somethingBad = false;
+            
+            return !somethingBad;
+        }
+
+block content
+    h2 Registration
+    
+    p Access to this API requires registration.
+
+    if displayRedirectMessage
+        h4 You will be redirected to the desired page right after successfully logging in.
+
+    h4.
+        By having signed up and registering, you agree to our <a target='_blank' href='#{portalUrl}content/terms-and-conditions'>Terms
+        and Conditions</a> and the <a target='_blank' href='#{portalUrl}content/privacy-policy'>Privacy/Cookie Policy</a>.
+
+    if errorMessage
+        div(role='alert').alert.alert-danger
+            span(aria-hidden="true").glyphicon.glyphicon-exclamation-sign
+            span.sr-only Error:
+            | &nbsp; #{errorMessage}
+
+    form(role='form' action='#{baseUrl}/#{signupUrl}' method='post' onsubmit='return validateRegister();')
+
+        input(type='hidden' name='_csrf' value='#{csrfToken}')
+
+        if custom_id
+            .form-group
+                label(for='custom_id') ID:
+                input(type='string' name='custom_id' id='custom_id' readonly value="#{custom_id}").form-control
+        .form-group
+            label(for='email') E-Mail:
+            input(type='string' name='email' id='email' readonly value="#{email}").form-control
+        .form-group
+            label(for='firstname') First/given name:
+            input(type='string' name='firstname' id='firstname').form-control
+            small 
+                span(id='errorFirstname' style='color:red')
+        .form-group
+            label(for='lastname') Last name:
+            input(type='string' name='lastname' id='lastname').form-control
+            small
+                span(id='errorLastname' style='color:red')
+        .form-group
+            label(for='lastname') Company:
+            input(type='string' name='company' id='company').form-control
+            small
+                span(id='errorCompany' style='color:red')
+        //- .form-group
+        //-     label(for='lastname') Password:
+        //-     input(type='string' name='lastname' id='lastname').form-control
+        //-     small
+        //-         span(id='errorLastname' style='color:red')
+        button(class='btn btn-lg btn-primary btn-block' type='submit') Register
+    
+    h5
+        a(href='#{baseUrl}/#{logoutUrl}') Log out

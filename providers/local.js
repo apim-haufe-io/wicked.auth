@@ -34,6 +34,26 @@ function LocalIdP(basePath, authMethodId/*, csrfProtection*/) {
                 method: 'post',
                 uri: '/login',
                 handler: this.loginHandler
+            },
+            {
+                method: 'get',
+                uri: '/signup',
+                handler: this.signupHandler
+            },
+            {
+                method: 'post',
+                uri: '/signup',
+                handler: this.signupPostHandler
+            },
+            {
+                method: 'get',
+                uri: '/register',
+                handler: this.registerHandler
+            },
+            {
+                method: 'post',
+                uri: '/register',
+                handler: this.registerPostHandler
             }
         ];
     };
@@ -60,6 +80,39 @@ function LocalIdP(basePath, authMethodId/*, csrfProtection*/) {
         });
     };
 
+    this.signupHandler = (req, res, next) => {
+        debug(`GET ${authMethodId}/signup`);
+        debug('signupHandler()');
+        renderSignup(req, res);
+    };
+
+    this.signupPostHandler = (req, res, next) => {
+        debug(`POST ${authMethodId}/signup`);
+        debug('signupPostHandler()');
+
+        // TODO
+        // renderLogin(req, res);
+    };
+
+    this.registerHandler = (req, res, next) => {
+        debug(`GET ${authMethodId}/register`);
+        debug('registerHandler()');
+        if (!req.session || 
+            !req.session[authMethodId] || 
+            !req.session[authMethodId].authResponse || 
+            !req.session[authMethodId].authResponse.profile) {
+            return failMessage(401, 'You are not logged in.', next);
+        }
+        renderRegister(req, res);
+    };
+
+    this.registerPostHandler = (req, res, next) => {
+        debug(`POST ${authMethodId}/register`);
+        debug('registerPostHandler()');
+
+        // TODO
+    };
+
     this.authorizeByUserPass = (user, pass, callback) => {
         debug('authorizeByUserPass()');
 
@@ -78,16 +131,37 @@ function LocalIdP(basePath, authMethodId/*, csrfProtection*/) {
         });
     };
 
-    function renderLogin(req, res, flashError) {
-        debug('renderLogin()');
-        res.render('login', {
+    function makeViewModel(req) {
+        return {
             title: req.app.glob.title,
             portalUrl: wicked.getExternalPortalUrl(),
             baseUrl: req.app.get('base_path'),
             // csrfToken: req.csrfToken(),
-            errorMessage: flashError,
-            loginUrl: `${authMethodId}/login`
-        });
+            loginUrl: `${authMethodId}/login`,
+            logoutUrl: `logout`,
+            signupUrl: `${authMethodId}/signup`,
+            registerUrl: `${authMethodId}/register`,
+            forgotPasswordUrl: `${authMethodId}/forgotpassword`
+        };
+    }
+
+    function renderLogin(req, res, flashError) {
+        debug('renderLogin()');
+        const viewModel = makeViewModel(req);
+        res.render('login', viewModel);
+    }
+
+    function renderSignup(req, res) {
+        debug('renderSignup()');
+        res.render('signup', makeViewModel(req));
+    }
+
+    function renderRegister(req, res) {
+        debug('renderRegister()');
+        const viewModel = makeViewModel(req);
+        const userProfile = req.session[authMethodId].authResponse.profile;
+        debug(userProfile);
+        res.render('register', makeViewModel(req));
     }
 
     function loginUser(username, password, callback) {

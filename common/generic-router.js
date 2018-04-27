@@ -28,6 +28,10 @@ function GenericOAuth2Router(basePath, authMethodId/*, csrfProtection*/) {
         const endpoints = idp.endpoints();
         for (let i = 0; i < endpoints.length; ++i) {
             const e = endpoints[i];
+            if (!e.uri)
+                throw new Error('initIdP: Invalid end point definition, "uri" is null): ' + JSON.stringify(e));
+            if (!e.handler)
+                throw new Error('initIdP: Invalid end point definition, "handler" is null): ' + JSON.stringify(e));
             oauthRouter[e.method](e.uri, e.handler);
         }
     };

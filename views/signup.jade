@@ -1,42 +1,54 @@
 extends auth_layout
 
 block scripts
-    if authUser
-        meta(http-equiv="refresh" content="0; url=/")
+    //- if authUser
+    //-     meta(http-equiv="refresh" content="0; url=/")
     script(type='text/javascript').
-        function validateLogin() {
+        function validateSignup() {
             var username = $('#username').val();
             var password = $('#password').val();
+            var password2 = $('#password2').val();
             var usernameError = '';
             var passwordError = '';
+            var password2Error = '';
             if (!username)
                 usernameError = 'Please enter a value for the username. ';
-            //- else if (!/.+@.+/.test(email))
-            //-     emailError = 'Email address invalid. ';
+            else if (!/.+@.+/.test(username))
+                usernameError = 'Username has to be a valid email address.';
             if (!password)
                 passwordError = 'Please enter your password.';
+            if (!password2)
+                password2Error = 'Please repeat your password.';
+            if (!password2Error && password !== password2)
+                password2Error = 'Passwords do not match';
 
             try {
                 $('#errorUsername').text(usernameError);
                 $('#errorPassword').text(passwordError);
+                $('#errorPassword2').text(password2Error);
             } catch (err) {
                 alert('Validation errored! Check your input values.');
                 return false;
             }
             
             var somethingBad = !!usernameError
-                || !!passwordError;
+                || !!passwordError
+                || !!password2Error;
             
             return !somethingBad;
         }
 
 block content
-    h2 Log in
+    h2 Sign up
     
     p Welcome to the #{title}.
 
     if displayRedirectMessage
         h4 You will be redirected to the desired page right after successfully logging in.
+
+    h4.
+        By signing up to this portal, you agree to our <a target='_blank' href='#{portalUrl}content/terms-and-conditions'>Terms
+        and Conditions</a> and the <a target='_blank' href='#{portalUrl}content/privacy-policy'>Privacy/Cookie Policy</a>.
 
     //- if glob.auth.adfs && glob.auth.adfs.useAdfs
     //-     a(href='/login/adfs').btn.btn-block.btn-lg.btn-primary
@@ -62,12 +74,12 @@ block content
             span.sr-only Error:
             | &nbsp; #{errorMessage}
 
-    form(role='form' action='#{baseUrl}/#{loginUrl}' method='post' onsubmit='return validateLogin();')
+    form(role='form' action='#{baseUrl}/#{signupUrl}' method='post' onsubmit='return validateSignup();')
 
         input(type='hidden' name='_csrf' value='#{csrfToken}')
 
         .form-group
-            label(for='username') Username:
+            label(for='username') E-Mail address (username):
             input(type='string' name='username' id='username').form-control
             small 
                 span(id='errorUsername' style='color:red')
@@ -76,9 +88,14 @@ block content
             input(type='password' name='password' id='password').form-control
             small
                 span(id='errorPassword' style='color:red')
-        button(class='btn btn-lg btn-primary btn-block' type='submit') Login
+        .form-group
+            label(for='password2') Password (repeat):
+            input(type='password' name='password2' id='password2').form-control
+            small
+                span(id='errorPassword2' style='color:red')
+        button(class='btn btn-lg btn-primary btn-block' type='submit') Sign up
     
     h5
-        a(href='#{baseUrl}/#{forgotPasswordUrl}') Forgot password?
+        a(href='#{baseUrl}/#{loginUrl}') Log in with an existing user
     h5
-        a(href='#{baseUrl}/#{signupUrl}') Create a new user.
+        a(href='#{baseUrl}/#{forgotPasswordUrl}') Forgot password?
