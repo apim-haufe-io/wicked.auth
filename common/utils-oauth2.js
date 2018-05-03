@@ -1,5 +1,6 @@
 'use strict';
 
+const async = require('async');
 const debug = require('debug')('portal-auth:utils-oauth2');
 const wicked = require('wicked-sdk');
 const request = require('request');
@@ -10,7 +11,7 @@ const profileStore = require('./profile-store');
 const oauth2 = require('../kong-oauth2/oauth2');
 const tokens = require('../kong-oauth2/tokens');
 
-const utilsOAuth2 = function() {};
+const utilsOAuth2 = function () { };
 
 utilsOAuth2._apiScopes = {};
 utilsOAuth2.getApiScopes = function (apiId, callback) {
@@ -187,14 +188,27 @@ utilsOAuth2.tokenAuthorizationCode = function (tokenRequest, callback) {
             if (err)
                 return callback(err);
             accessToken.session_data = profile;
-            return callback(null, accessToken);
+            // We now have to register the access token with the profile
+            // Also delete the code from the redis, it's not needed anymore
+            async.parallel({
+                deleteToken: (callback) => {
+                    // We'll ignore what happens here.
+                    profileStore.deleteTokenOrCode(tokenRequest.code);
+                    return callback(null);
+                },
+                updateToken: (callback) => {
+                    profileStore.registerTokenOrCode(accessToken, tokenRequest.api_id, profile, (err) => {
+                        if (err)
+                            return callback(err);
+                        return callback(null, accessToken);
+                    });
+                }
+            }, (err, results) => {
+                if (err)
+                    return callback(err);
+                return callback(null, accessToken);
+            });
         });
-        //     (profile, callback) => profileStore.registerTokenOrCode(accessToken, tokenRequest.api_id, profile, callback)
-        // ], (err) => {
-        //     if (err)
-        //         return callback(err);
-        //     return callback(null, accessToken);
-        // });
     });
 };
 

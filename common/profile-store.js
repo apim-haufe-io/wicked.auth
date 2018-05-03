@@ -58,6 +58,23 @@ profileStore.registerTokenOrCode = function (tokenResponse, apiId, profile, call
     }
 };
 
+profileStore.deleteTokenOrCode = function (token, callback) {
+    debug(`deleteTokenOrCode(${token})`);
+    const redis = redisConnection.getRedis();
+    redis.del(token, (err) => {
+        if (err) {
+            debug('deleteTokenOrCode: redis.delete returned an error when deleting token ' + token);
+            debug(err);
+            if (callback)
+                return callback(err);
+            return;
+        }
+        if (callback)
+            return callback(null);
+        return;
+    });
+};
+
 profileStore.store = function (token, apiId, profile, callback) {
     debug('store()');
 
