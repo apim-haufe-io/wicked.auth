@@ -3,4 +3,4 @@ certs
 node_modules
 sessions
 *.log
-
+*.tgz

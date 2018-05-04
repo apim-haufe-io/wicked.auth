@@ -55,7 +55,7 @@
     "redis": "2.8.0",
     "request": "2.74.0",
     "session-file-store": "1.0.0",
-    "wicked-sdk": "file:../wicked.node-sdk/wicked-sdk-1.0.0.tgz"
+    "wicked-sdk": "file:wicked-sdk.tgz"
   },
   "jshintConfig": {
     "node": true,
