@@ -1,6 +1,6 @@
 'use strict';
 
-const debug = require('debug')('portal-auth:app');
+const { debug, info, warn, error } = require('portal-env').Logger('portal-auth:app');
 const express = require('express');
 const bodyParser = require('body-parser');
 const cookieParser = require('cookie-parser');
@@ -33,7 +33,7 @@ const SECRET = 'ThisIsASecret';
 
 let sessionMinutes = 60;
 if (process.env.AUTH_SERVER_SESSION_MINUTES) {
-    console.log('Using session duration specified in env var AUTH_SERVER_SESSION_MINUTES.');
+    info('Using session duration specified in env var AUTH_SERVER_SESSION_MINUTES.');
     sessionMinutes = Number(process.env.AUTH_SERVER_SESSION_MINUTES);
 }
 debug('Session duration: ' + sessionMinutes + ' minutes.');
@@ -54,12 +54,12 @@ app.initApp = function (authServerConfig, callback) {
         // in the internal network of Docker.
 
         //sessionArgs.cookie.secure = true;
-        console.log("Running in PRODUCTION MODE.");
+        info("Running in PRODUCTION MODE.");
     } else {
-        console.log("=============================");
-        console.log(" Running in DEVELOPMENT MODE");
-        console.log("=============================");
-        console.log("If you see this in your production logs, you're doing something wrong.");
+        warn("=============================");
+        warn(" Running in DEVELOPMENT MODE");
+        warn("=============================");
+        warn("If you see this in your production logs, you're doing something wrong.");
     }
 
     const basePath = app.get('base_path');
@@ -126,7 +126,7 @@ app.initApp = function (authServerConfig, callback) {
                 app.use(authUri, new DummyIdP(basePath, authMethod.name).getRouter());
                 break;
             default:
-                console.error('ERROR: Unknown authMethod type ' + authMethod.type);
+                error('ERROR: Unknown authMethod type ' + authMethod.type);
                 break;
         }
     }
@@ -196,8 +196,8 @@ app.initApp = function (authServerConfig, callback) {
     // no stacktraces leaked to user
     app.use(function (err, req, res, next) {
         if (err.status !== 404) {
-            console.error(err);
-            console.error(err.stack);
+            error(err);
+            error(err.stack);
         }
         res.status(err.status || 500);
         // From failJson?

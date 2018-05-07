@@ -1,7 +1,7 @@
 'use strict';
 
 const cors = require('cors');
-const debug = require('debug')('portal-auth:utils');
+const { debug, info, warn, error } = require('portal-env').Logger('portal-auth:utils');
 const wicked = require('wicked-sdk');
 const crypto = require('crypto');
 const url = require('url');
@@ -111,7 +111,7 @@ function storeRedirectUriForCors(uri) {
         _validCorsHosts[host] = true;
         debug(_validCorsHosts);
     } catch (ex) {
-        console.error('storeRedirectUriForCors() - Invalid URI: ' + uri);
+        error('storeRedirectUriForCors() - Invalid URI: ' + uri);
     }
 }
 
@@ -168,7 +168,7 @@ utils.getVersion = function () {
                 if (packageInfo.version)
                     utils._packageVersion = packageInfo.version;
             } catch (ex) {
-                console.error(ex);
+                error(ex);
             }
         }
         if (!utils._packageVersion) // something went wrong

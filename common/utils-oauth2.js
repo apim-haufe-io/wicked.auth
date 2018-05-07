@@ -1,7 +1,7 @@
 'use strict';
 
 const async = require('async');
-const debug = require('debug')('portal-auth:utils-oauth2');
+const { debug, info, warn, error } = require('portal-env').Logger('portal-auth:utils-oauth2');
 const wicked = require('wicked-sdk');
 const request = require('request');
 

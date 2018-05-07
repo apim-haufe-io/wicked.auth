@@ -3,7 +3,7 @@
 const google = require('express').Router();
 const passport = require('passport');
 const GoogleStrategy = require('passport-google-oauth20').Strategy;
-const debug = require('debug')('auth-passport:google');
+const { debug, info, warn, error } = require('portal-env').Logger('auth-passport:google');
 const wicked = require('wicked-sdk');
 
 const utils = require('../common/utils');
@@ -40,9 +40,9 @@ google.init = function (app, authConfig) {
         // We'll always accept Google Identities, no matter what.
         normalizeProfile(profile, function (err, userProfile) {
             if (err) {
-                debug('normalizeProfile failed.');
-                console.error(err);
-                console.error(err.stack);
+                error('normalizeProfile failed.');
+                error(err);
+                error(err.stack);
                 return done(err);
             }
             debug('Google normalized user profile:');

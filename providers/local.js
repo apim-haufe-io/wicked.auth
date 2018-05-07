@@ -1,6 +1,6 @@
 'use strict';
 
-const debug = require('debug')('portal-auth:local');
+const { debug, info, warn, error } = require('portal-env').Logger('portal-auth:local');
 const qs = require('querystring');
 const wicked = require('wicked-sdk');
 const Router = require('express').Router;

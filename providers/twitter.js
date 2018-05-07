@@ -1,6 +1,6 @@
 'use strict';
 
-const debug = require('debug')('auth-passport:twitter');
+const { debug, info, warn, error } = require('portal-env').Logger('auth-passport:twitter');
 const passport = require('passport');
 const request = require('request');
 const TwitterStrategy = require('passport-twitter');
@@ -39,9 +39,9 @@ twitter.init = function (app, authConfig) {
         debug('Twitter Authentication succeeded.');
         normalizeProfile(profile, accessToken, function (err, userProfile) {
             if (err) {
-                debug('normalizeProfile failed.');
-                console.error(err);
-                console.error(err.stack);
+                error('normalizeProfile failed.');
+                error(err);
+                error(err.stack);
                 return done(err);
             }
             debug('Twitter normalized user profile:');

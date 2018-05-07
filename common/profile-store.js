@@ -5,7 +5,7 @@ const wicked = require('wicked-sdk');
 const { URL } = require('url');
 const qs = require('querystring');
 
-const debug = require('debug')('portal-auth:profile-store');
+const { debug, info, warn, error } = require('portal-env').Logger('portal-auth:profile-store');
 const redisConnection = require('./redis-connection');
 const { failMessage, failError, failOAuth, makeError } = require('../common/utils-fail');
 

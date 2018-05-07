@@ -4,7 +4,7 @@ const request = require('request');
 const passport = require('passport');
 const GithubStrategy = require('passport-github2');
 const wicked = require('wicked-sdk');
-const debug = require('debug')('auth-passport:github');
+const { debug, info, warn, error } = require('portal-env').Logger('auth-passport:github');
 
 const utils = require('../common/utils');
 
@@ -41,9 +41,9 @@ github.init = function (app, authConfig) {
         normalizeProfile(profile, accessToken, function (err, userProfile) {
             debug('callback normalizeProfile()');
             if (err) {
-                debug('But normalizeProfile failed.');
-                console.error(err);
-                console.error(err.stack);
+                error('normalizeProfile failed.');
+                error(err);
+                error(err.stack);
                 return done(err);
             }
             debug('Normalized Profile:');

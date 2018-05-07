@@ -2,7 +2,7 @@
 /* jshint loopfunc: true */
 
 const passport = require('passport');
-const debug = require('debug')('auth-passport:adfs');
+const { debug, info, warn, error } = require('portal-env').Logger('auth-passport:adfs');
 const OAuth2Strategy = require('passport-oauth').OAuth2Strategy;
 const jwt = require('jsonwebtoken');
 const wicked = require('wicked-sdk');
@@ -84,7 +84,7 @@ adfs.init = function (app, authConfig) {
                 decodedProfile = jwt.verify(accessToken, authConfig.adfs.publicCert);
                 debug('Verified JWT successfully.');
             } catch (ex) {
-                console.error('ERROR: Could not verify JWT');
+                error('ERROR: Could not verify JWT');
                 return done(null, false, { message: ex });
             }
         }
@@ -96,9 +96,9 @@ adfs.init = function (app, authConfig) {
 
         normalizeProfile(decodedProfile, authConfig, function (err, normalizedProfile) {
             if (err) {
-                console.error('ADFS normalizeProfile failed.');
-                console.error(err);
-                console.error(err.stack);
+                error('ADFS normalizeProfile failed.');
+                error(err);
+                error(err.stack);
                 return done(err);
             }
             debug('Normalized ADFS profile');
@@ -158,7 +158,7 @@ function getScope(profile, authConfig) {
             const groupScope = authConfig.adfs.scopes[group];
             debug('Found a scope entry: ' + groupScope);
             if (!Array.isArray(groupScope)) {
-                console.error('Scope entry for group ' + groupScope + ' is not an array.');
+                error('Scope entry for group ' + groupScope + ' is not an array.');
                 continue;
             }
             for (let j = 0; j < groupScope.length; ++j) {

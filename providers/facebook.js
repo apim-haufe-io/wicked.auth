@@ -1,6 +1,6 @@
 'use strict';
 
-const debug = require('debug')('auth-passport:facebook');
+const { debug, info, warn, error } = require('portal-env').Logger('auth-passport:facebook');
 const passport = require('passport');
 const FacebookStrategy = require('passport-facebook');
 const request = require('request');
@@ -37,8 +37,8 @@ facebook.init = function (app, authConfig) {
         normalizeProfile(profile, accessToken, function (err, userProfile) {
             if (err) {
                 debug('normalizeProfile failed.');
-                console.error(err);
-                console.error(err.stack);
+                error(err);
+                error(err.stack);
                 return done(err);
             }
             debug('Facebook normalized user profile:');
@@ -70,8 +70,8 @@ function normalizeProfile(profile, accessToken, callback) {
         if (err)
             return callback(err);
         if (res.statusCode !== 200) {
-            console.error('Unexpected status code from Facebook: ' + res.statusCode);
-            console.error(body);
+            error('Unexpected status code from Facebook: ' + res.statusCode);
+            error(body);
             return callback(makeError('Could not retrieve user profile from Facebook. Status Code: ' + res.statusCode));
         }
         const jsonBody = utils.getJson(body);

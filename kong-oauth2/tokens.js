@@ -1,7 +1,7 @@
 'use strict';
 
 const async = require('async');
-const debug = require('debug')('portal-auth:tokens');
+const { debug, info, warn, error } = require('portal-env').Logger('portal-auth:tokens');
 const qs = require('querystring');
 
 const utils = require('../common/utils');

@@ -1,6 +1,6 @@
 'use strict';
 
-const debug = require('debug')('portal-auth:local');
+const { debug, info, warn, error } = require('portal-env').Logger('portal-auth:local');
 const wicked = require('wicked-sdk');
 
 const GenericOAuth2Router = require('../common/generic-router');

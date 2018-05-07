@@ -1,6 +1,6 @@
 'use strict';
 
-var debug = require('debug')('portal:sessionstore');
+var { debug, info, warn, error } = require('portal-env').Logger('portal:sessionstore');
 const redis = require('redis');
 var wicked = require('wicked-sdk');
 

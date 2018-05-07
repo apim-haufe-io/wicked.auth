@@ -1,7 +1,7 @@
 'use strict';
 
 const qs = require('querystring');
-const debug = require('debug')('portal-auth:oauth2');
+const { debug, info, warn, error } = require('portal-env').Logger('portal-auth:oauth2');
 const async = require('async');
 const wicked = require('wicked-sdk');
 const request = require('request');
@@ -699,7 +699,7 @@ function getTokenRequest(grantType, oauthInfo, callback) {
         body: tokenBody
     };
 
-    console.log(JSON.stringify(tokenRequest, null, 2));
+    debug(JSON.stringify(tokenRequest, null, 2));
 
     return callback(null, tokenRequest);
 }

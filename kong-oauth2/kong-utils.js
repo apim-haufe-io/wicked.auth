@@ -1,7 +1,7 @@
 'use strict';
 
 const request = require('request');
-const debug = require('debug')('portal-auth:kong-utils');
+const { debug, info, warn, error } = require('portal-env').Logger('portal-auth:kong-utils');
 const wicked = require('wicked-sdk');
 
 const utils = require('../common/utils');
