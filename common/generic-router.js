@@ -144,7 +144,7 @@ function GenericOAuth2Router(basePath, authMethodId/*, csrfProtection*/) {
 
             // Now we should have the user ID here:
             if (!Array.isArray(shortInfoList) || shortInfoList.length <= 0 || !shortInfoList[0].id)
-                return callback(new Error('unifyAuthResponse: Get user short info by email did not return a user id'));
+                return callback(new Error('existsUserWithCustomId: Get user short info by email did not return a user id'));
             return callback(null, shortInfoList[0]);
         });
     }
@@ -171,7 +171,7 @@ function GenericOAuth2Router(basePath, authMethodId/*, csrfProtection*/) {
                 return failMessage(500, 'checkUserFromAuthResponse: ' + err.message, next);
 
             req.session[authMethodId].authResponse = authResponse;
-
+            
             debug(authResponse);
             return authorizeFlow(req, res, next);
         });
