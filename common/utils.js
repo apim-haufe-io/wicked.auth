@@ -46,7 +46,8 @@ utils.pipe = function (req, res, uri) {
         apiUrl += '/';
     apiUrl += uri;
     request.get({
-        url: apiUrl
+        url: apiUrl,
+        headers: { 'X-Authenticated-Scope': 'read_content' }
     }).pipe(res);
 };
 

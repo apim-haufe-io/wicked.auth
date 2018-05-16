@@ -174,8 +174,17 @@ utilsOAuth2.validateTokenRequest = function (tokenRequest, callback) {
 
 utilsOAuth2.tokenClientCredentials = function (tokenRequest, callback) {
     debug('tokenClientCredentials()');
-    // We can just pass this on to the wicked SDK.
-    oauth2.token(tokenRequest, callback);
+    utilsOAuth2.validateSubscription(tokenRequest.client_id, tokenRequest.api_id, (err, subsTrust) => {
+        if (err)
+            return callback(err);
+        utilsOAuth2.validateApiScopes(tokenRequest.api_id, tokenRequest.scope, subsTrust.trusted, (err, scopeInfo) => {
+            if (err)
+                return callback(err);
+            tokenRequest.scope = scopeInfo.validatedScopes;
+            // We can just pass this on to the wicked SDK.
+            oauth2.token(tokenRequest, callback);
+        });
+    });
 };
 
 utilsOAuth2.tokenAuthorizationCode = function (tokenRequest, callback) {
