@@ -52,6 +52,8 @@ failUtils.failJson = function (status, message, internalErrorOrCallback, callbac
 
 failUtils.failError = function (statusCode, err, callback) {
     // Don't overwrite pre-existing status codes.
+    if (err.statusCode && !err.status)
+        err.status = err.statusCode;
     if (!err.status)
         err.status = statusCode;
     return callback(err);

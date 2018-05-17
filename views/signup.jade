@@ -5,16 +5,16 @@ block scripts
     //-     meta(http-equiv="refresh" content="0; url=/")
     script(type='text/javascript').
         function validateSignup() {
-            var username = $('#username').val();
+            var email = $('#email').val();
             var password = $('#password').val();
             var password2 = $('#password2').val();
-            var usernameError = '';
+            var emailError = '';
             var passwordError = '';
             var password2Error = '';
-            if (!username)
-                usernameError = 'Please enter a value for the username. ';
-            else if (!/.+@.+/.test(username))
-                usernameError = 'Username has to be a valid email address.';
+            if (!email)
+                emailError = 'Please enter a value for the email address. ';
+            else if (!/.+@.+/.test(email))
+                emailError = 'Email has to be a valid email address.';
             if (!password)
                 passwordError = 'Please enter your password.';
             if (!password2)
@@ -23,7 +23,7 @@ block scripts
                 password2Error = 'Passwords do not match';
 
             try {
-                $('#errorUsername').text(usernameError);
+                $('#errorEmail').text(emailError);
                 $('#errorPassword').text(passwordError);
                 $('#errorPassword2').text(password2Error);
             } catch (err) {
@@ -31,7 +31,7 @@ block scripts
                 return false;
             }
             
-            var somethingBad = !!usernameError
+            var somethingBad = !!emailError
                 || !!passwordError
                 || !!password2Error;
             
@@ -79,10 +79,10 @@ block content
         input(type='hidden' name='_csrf' value='#{csrfToken}')
 
         .form-group
-            label(for='username') E-Mail address (username):
-            input(type='string' name='username' id='username').form-control
+            label(for='email') E-Mail address (username):
+            input(type='string' name='email' id='email').form-control
             small 
-                span(id='errorUsername' style='color:red')
+                span(id='errorEmail' style='color:red')
         .form-group
             label(for='password') Password:
             input(type='password' name='password' id='password').form-control

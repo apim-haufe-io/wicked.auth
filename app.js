@@ -197,7 +197,6 @@ app.initApp = function (authServerConfig, callback) {
     app.use(function (err, req, res, next) {
         if (err.status !== 404) {
             error(err);
-            error(err.stack);
         }
         res.status(err.status || 500);
         // From failJson?

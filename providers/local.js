@@ -44,16 +44,6 @@ function LocalIdP(basePath, authMethodId/*, csrfProtection*/) {
                 method: 'post',
                 uri: '/signup',
                 handler: this.signupPostHandler
-            },
-            {
-                method: 'get',
-                uri: '/register',
-                handler: this.registerHandler
-            },
-            {
-                method: 'post',
-                uri: '/register',
-                handler: this.registerPostHandler
             }
         ];
     };
@@ -90,27 +80,39 @@ function LocalIdP(basePath, authMethodId/*, csrfProtection*/) {
         debug(`POST ${authMethodId}/signup`);
         debug('signupPostHandler()');
 
-        // TODO
-        // renderLogin(req, res);
-    };
+        const email = req.body.email;
+        const password = req.body.password;
+        const password2 = req.body.password2;
 
-    this.registerHandler = (req, res, next) => {
-        debug(`GET ${authMethodId}/register`);
-        debug('registerHandler()');
-        if (!req.session || 
-            !req.session[authMethodId] || 
-            !req.session[authMethodId].authResponse || 
-            !req.session[authMethodId].authResponse.profile) {
-            return failMessage(401, 'You are not logged in.', next);
-        }
-        renderRegister(req, res);
-    };
+        if (!password)
+            return failMessage(400, 'Password cannot be empty', next);
+        if (password !== password2)
+            return failMessage(400, 'Passwords do not match', next);
 
-    this.registerPostHandler = (req, res, next) => {
-        debug(`POST ${authMethodId}/register`);
-        debug('registerPostHandler()');
+        // Let's give it a shot; wicked can still intervene here...
+        const userCreateInfo = {
+            email: email,
+            password: password,
+            groups: [],
+            validated: false
+        };
+        debug(`signupPostHandler: Attempting to create user ${email}`);
+        wicked.apiPost('/users', userCreateInfo, (err, userInfo) => {
+            if (err)
+                return failError(500, err, next);
 
-        // TODO
+            debug(`signupPostHandler: Successfully created user ${email} with id ${userInfo.id}`);
+
+            createAuthResponse(userInfo, (err, authResponse) => {
+                if (err)
+                    return failError(500, err, next);
+                debug(`signupPostHandler: Successfully created an authResponse`);
+                debug(authResponse);
+
+                // We're practically logged in now, as the new user.
+                genericFlow.continueAuthorizeFlow(req, res, next, authResponse);
+            });
+        });
     };
 
     this.authorizeByUserPass = (user, pass, callback) => {
@@ -155,15 +157,7 @@ function LocalIdP(basePath, authMethodId/*, csrfProtection*/) {
         debug('renderSignup()');
         res.render('signup', makeViewModel(req));
     }
-
-    function renderRegister(req, res) {
-        debug('renderRegister()');
-        const viewModel = makeViewModel(req);
-        const userProfile = req.session[authMethodId].authResponse.profile;
-        debug(userProfile);
-        res.render('register', makeViewModel(req));
-    }
-
+    
     function loginUser(username, password, callback) {
         debug('loginUser()');
         wicked.apiPost('login', {
@@ -187,7 +181,6 @@ function LocalIdP(basePath, authMethodId/*, csrfProtection*/) {
                     return callback(err);
                 return callback(null, authResponse);
             });
-
         });
     }
 

@@ -17,6 +17,7 @@ function GenericOAuth2Router(basePath, authMethodId/*, csrfProtection*/) {
 
     const oauthRouter = new Router();
     const state = {};
+    const instance = this;
 
     this.getRouter = () => {
         return oauthRouter;
@@ -91,27 +92,28 @@ function GenericOAuth2Router(basePath, authMethodId/*, csrfProtection*/) {
                     // Did we add/change the scopes passed in?
                     authRequest.scopesDiffer = scopeValidationResult.scopesDiffer;
 
-                    let isLoggedIn = req.session[authMethodId].authResponse;
+                    let existingAuthResponse = req.session[authMethodId].authResponse;
                     // Borrowed from OpenID Connect, check for prompt request for implicit grant
                     // http://openid.net/specs/openid-connect-implicit-1_0.html#RequestParameters
                     if (authRequest.response_type === 'token') {
                         switch (authRequest.prompt) {
                             case 'none':
-                                if (!isLoggedIn)
+                                if (!existingAuthResponse)
                                     return failOAuth(401, 'login_required', 'user must be logged in interactively, cannot authorize without logged in user.', next);
                                 return authorizeFlow(req, res, next);
                             case 'login':
                                 // Force login; wipe session data
-                                if (isLoggedIn) {
+                                if (existingAuthResponse) {
                                     delete req.session[authMethodId].authResponse;
-                                    isLoggedIn = false;
+                                    existingAuthResponse = null;
                                 }
                                 break;
                         }
                     }
                     // We're fine. Check for pre-existing sessions.
-                    if (isLoggedIn)
-                        return authorizeFlow(req, res, next);
+                    if (existingAuthResponse) {
+                        return instance.continueAuthorizeFlow(req, res, next, existingAuthResponse);
+                    }
 
                     // Not logged in, or forced login
                     // return local.renderLogin(req, res, apiId);
@@ -170,13 +172,32 @@ function GenericOAuth2Router(basePath, authMethodId/*, csrfProtection*/) {
             if (err)
                 return failMessage(500, 'checkUserFromAuthResponse: ' + err.message, next);
 
+            if (!req.session[authMethodId].authRequest ||
+                !req.session[authMethodId].authRequest.api_id)
+                return failMessage(500, 'Invalid state: API in authorization request is missing.', next);
+
+            const apiId = req.session[authMethodId].authRequest.api_id;
             req.session[authMethodId].authResponse = authResponse;
-            
-            debug(authResponse);
-            return authorizeFlow(req, res, next);
+
+            debug('Retrieving registration info...');
+            // We have an identity now, do we need registrations?
+            utils.getApiRegistrationPool(apiId, (err, poolId) => {
+                if (err)
+                    return failError(500, err, next);
+
+                debug(authResponse);
+
+                if (!poolId) {
+                    // Nope, just go ahead
+                    return authorizeFlow(req, res, next);
+                }
+
+                debug(`API requires registration with pool '${poolId}', starting registration flow`);
+
+                // We'll do the registrationFlow first then...
+                return registrationFlow(poolId, req, res, next);
+            });
         });
-
-
     };
 
     // !!!
@@ -230,9 +251,74 @@ function GenericOAuth2Router(basePath, authMethodId/*, csrfProtection*/) {
         });
     });
 
+    oauthRouter.post('/register', (req, res, next) => {
+        // ...
+        debug(`/register`);
+
+        return failMessage(500, 'Not implemented', next);
+    });
+
     // =============================================
     // Helper methods
     // =============================================
+
+    function registrationFlow(poolId, req, res, next) {
+        debug('registrationFlow()');
+
+        const userId = req.session[authMethodId].authResponse.userId;
+        wicked.apiGet(`/registrations/pools/${poolId}/users/${userId}`, (err, regInfo) => {
+            if (err && err.statusCode !== 404)
+                return failError(500, err, next);
+
+            if (!regInfo) {
+                // User does not have a registration here, we need to get one
+                return renderRegister(req, res, next);
+            } else {
+                // User already has a registration, pass it back
+                // TODO? Here we could check for not filled required fields
+
+            }
+        });
+    }
+
+    function makeViewModel(req, defaultProfile) {
+        return {
+            title: req.app.glob.title,
+            portalUrl: wicked.getExternalPortalUrl(),
+            baseUrl: req.app.get('base_path'),
+            // csrfToken: req.csrfToken(),
+            loginUrl: `${authMethodId}/login`,
+            logoutUrl: `logout`,
+            signupUrl: `${authMethodId}/signup`,
+            registerUrl: `${authMethodId}/register`,
+            forgotPasswordUrl: `${authMethodId}/forgotpassword`
+        };
+    }
+
+    function renderRegister(req, res, next) {
+        debug('renderRegister()');
+        // The profile is not yet available, doh
+        //const userProfile = req.session[authMethodId].authResponse.profile;
+        const authResponse = req.session[authMethodId].authResponse;
+        const apiId = req.session[authMethodId].authRequest.api_id;
+        debug(`API: ${apiId}`);
+
+        utils.getPoolInfoByApi(apiId, (err, poolInfo) => {
+            if (err)
+                return failMessage(500, 'Invalid state, could not read API information for API ${apiId} to register for.', next);
+            debug('Default profile:');
+            debug(authResponse.defaultProfile);
+
+            const viewModel = makeViewModel(req);
+            viewModel.userId = authResponse.userId;
+            viewModel.customId = authResponse.customId;
+            viewModel.defaultProfile = authResponse.defaultProfile;
+            viewModel.poolInfo = poolInfo;
+
+            debug(viewModel);
+            res.render('register', viewModel);
+        });
+    }
 
     function authorizeFlow(req, res, next) {
         debug('authorizeFlow()');

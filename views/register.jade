@@ -5,38 +5,28 @@ block scripts
     //-     meta(http-equiv="refresh" content="0; url=/")
     script(type='text/javascript').
         function validateRegister() {
-            //- var username = $('#username').val();
-            //- var password = $('#password').val();
-            //- var password2 = $('#password2').val();
-            //- var usernameError = '';
-            //- var passwordError = '';
-            //- var password2Error = '';
-            //- if (!username)
-            //-     usernameError = 'Please enter a value for the username. ';
-            //- else if (!/.+@.+/.test(username))
-            //-     usernameError = 'Username has to be a valid email address.';
-            //- if (!password)
-            //-     passwordError = 'Please enter your password.';
-            //- if (!password2)
-            //-     password2Error = 'Please repeat your password.';
-            //- if (!password2Error && password !== password2)
-            //-     password2Error = 'Passwords do not match';
+            const model = !{JSON.stringify(poolInfo)};
 
-            //- try {
-            //-     $('#errorUsername').text(usernameError);
-            //-     $('#errorPassword').text(passwordError);
-            //-     $('#errorPassword2').text(password2Error);
-            //- } catch (err) {
-            //-     alert('Validation errored! Check your input values.');
-            //-     return false;
-            //- }
-            
-            //- var somethingBad = !!usernameError
-            //-     || !!passwordError
-            //-     || !!password2Error;
+            let somethingBad = false;
+            for (let name in model.properties) {
+                const propInfo = model.properties[name];
+                const content = $('#' + name).val();
+                if (propInfo.type !== 'string')
+                    continue;
+                let errMessage = '';
+                if (propInfo.required && !content) {
+                    errMessage = 'Field is required, it cannot be empty.';
+                } else if (content) {
+                    if (propInfo.minLength && content.length < propInfo.minLength)
+                        errMessage = 'Entry has to be at least ' + propInfo.minLength + ' characters.';
+                    else if (propInfo.maxLength && content.length > propInfo.maxLength)
+                        errMessage = 'Too many characters, maximum ' + propInfo.maxLength + ' allowed.';
+                }
+                if (errMessage)
+                    somethingBad = true;
+                $('#error' + name).text(errMessage);
+            }
 
-            var somethingBad = false;
-            
             return !somethingBad;
         }
 
@@ -58,37 +48,29 @@ block content
             span.sr-only Error:
             | &nbsp; #{errorMessage}
 
-    form(role='form' action='#{baseUrl}/#{signupUrl}' method='post' onsubmit='return validateRegister();')
+    form(role='form' action='#{baseUrl}/#{registerUrl}' method='post' onsubmit='return validateRegister();')
 
         input(type='hidden' name='_csrf' value='#{csrfToken}')
 
         if custom_id
             .form-group
                 label(for='custom_id') ID:
-                input(type='string' name='custom_id' id='custom_id' readonly value="#{custom_id}").form-control
+                input(type='string' name='custom_id' id='custom_id' readonly value="#{customId}").form-control
         .form-group
             label(for='email') E-Mail:
-            input(type='string' name='email' id='email' readonly value="#{email}").form-control
-        .form-group
-            label(for='firstname') First/given name:
-            input(type='string' name='firstname' id='firstname').form-control
-            small 
-                span(id='errorFirstname' style='color:red')
-        .form-group
-            label(for='lastname') Last name:
-            input(type='string' name='lastname' id='lastname').form-control
-            small
-                span(id='errorLastname' style='color:red')
-        .form-group
-            label(for='lastname') Company:
-            input(type='string' name='company' id='company').form-control
-            small
-                span(id='errorCompany' style='color:red')
-        //- .form-group
-        //-     label(for='lastname') Password:
-        //-     input(type='string' name='lastname' id='lastname').form-control
-        //-     small
-        //-         span(id='errorLastname' style='color:red')
+            input(type='string' name='email' id='email' readonly value="#{defaultProfile.email}").form-control
+
+        each propInfo, propName in poolInfo.properties
+            .form-group
+                -var required = propInfo.required ? ' (*)' : ''
+                label(for="#{propName}") #{propInfo.description}#{required}:
+                -var thisValue = defaultProfile.hasOwnProperty(propInfo.oidcClaim) ? defaultProfile[propInfo.oidcClaim] : '';
+                input(type='string' name="#{propName}" id="#{propName}" value='#{thisValue}').form-control
+                small
+                    span(id="error#{propName}" style='color:red')
+
+        p Fields marked with (*) are required.
+
         button(class='btn btn-lg btn-primary btn-block' type='submit') Register
     
     h5

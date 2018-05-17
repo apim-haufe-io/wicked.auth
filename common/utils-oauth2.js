@@ -265,14 +265,18 @@ utilsOAuth2.wickedUserInfoToOidcProfile = function (userInfo, callback) {
     // This is subject to heavy change, possibly and probably, and
     // will also consist of fetching a profile/registration info from
     // the wicked API.
+
+    // But perhaps not - let's see; this may possibly be done by the
+    // generic auth thingie, when it checks whether a user is already registered
+    // or not.
     const oidcProfile = {
         sub: userInfo.id,
         email: userInfo.email,
         email_verified: userInfo.validated,
-        name: makeFullName(userInfo),
-        given_name: userInfo.firstName,
-        family_name: userInfo.lastName
-        // admin: userInfo.admin // No no noooo
+        // name: makeFullName(userInfo),
+        // given_name: userInfo.firstName,
+        // family_name: userInfo.lastName
+        // // admin: userInfo.admin // No no noooo
     };
     return callback(null, oidcProfile);
 };

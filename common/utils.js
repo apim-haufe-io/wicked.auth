@@ -178,5 +178,69 @@ utils.getVersion = function () {
     return utils._packageVersion;
 };
 
+utils._apiInfoMap = {};
+utils.getApiInfo = (apiId, callback) => {
+    debug(`getApiInfo(${apiId})`);
+    if (utils._apiInfoMap[apiId] && utils._apiInfoMap[apiId].success)
+        return callback(null, utils._apiInfoMap[apiId].data);
+    wicked.apiGet(`/apis/${apiId}`, (err, apiInfo) => {
+        if (err) {
+            utils._apiInfoMap[apiId] = {
+                success: false
+            };
+            return callback(err);
+        }
+        utils._apiInfoMap[apiId] = {
+            data: apiInfo,
+            success: true
+        };
+        return callback(null, apiInfo);
+    });
+};
+
+utils.getApiRegistrationPool = (apiId, callback) => {
+    debug(`getApiRegistrationPool(${apiId})`);
+    utils.getApiInfo(apiId, (err, apiInfo) => {
+        if (err)
+            return callback(err);
+        let poolId = apiInfo.registrationPool;
+        if (!poolId)
+            debug(`API ${apiId} does not have a registration pool setting`);
+        // Yes, poolId can be null or undefined here
+        return callback(null, poolId);
+    });
+};
+
+utils._poolInfoMap = {};
+utils.getPoolInfo = (poolId, callback) => {
+    debug(`getPoolInfo(${poolId})`);
+    if (utils._poolInfoMap[poolId] && utils._poolInfoMap[poolId].success)
+        return callback(null, utils._poolInfoMap[poolId].data);
+    wicked.apiGet(`/pools/${poolId}`, (err, poolInfo) => {
+        if (err) {
+            utils._poolInfoMap[poolId] = {
+                success: false
+            };
+            return callback(err);
+        }
+        utils._poolInfoMap[poolId] = {
+            data: poolInfo,
+            success: true
+        };
+        return callback(null, poolInfo);
+    });
+};
+
+utils.getPoolInfoByApi = (apiId, callback) => {
+    debug(`getPoolInfoByApi(${apiId})`);
+    utils.getApiRegistrationPool(apiId, (err, poolId) => {
+        if (err)
+            return callback(err);
+        if (!poolId)
+            return callback(utils.makeError(`API ${apiId} does not have a registration pool`, 500));
+        utils.getPoolInfo(poolId, callback);
+    });
+};
+
 
 module.exports = utils;
