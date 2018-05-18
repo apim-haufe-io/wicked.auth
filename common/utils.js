@@ -21,6 +21,11 @@ utils.createRandomId = function () {
     return crypto.randomBytes(20).toString('hex');
 };
 
+utils.clone = (o) => {
+    // Ahem.
+    return JSON.parse(JSON.stringify(o));
+};
+
 utils.jsonError = function (res, message, status) {
     debug('Error ' + status + ': ' + message);
     res.status(status).json({ message: message });
@@ -241,6 +246,5 @@ utils.getPoolInfoByApi = (apiId, callback) => {
         utils.getPoolInfo(poolId, callback);
     });
 };
-
 
 module.exports = utils;

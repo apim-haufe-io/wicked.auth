@@ -157,7 +157,7 @@ function LocalIdP(basePath, authMethodId/*, csrfProtection*/) {
         debug('renderSignup()');
         res.render('signup', makeViewModel(req));
     }
-    
+
     function loginUser(username, password, callback) {
         debug('loginUser()');
         wicked.apiPost('login', {
@@ -171,31 +171,45 @@ function LocalIdP(basePath, authMethodId/*, csrfProtection*/) {
             if (userInfoList.length !== 1)
                 return callback(makeError(`loginUser: /login did not return user (array length ${userInfoList.length})`, 500));
             debug('loginUser: /login successful');
-            // TODO: Real profile, for now userInfo from wicked...
-            // TBD: Eh?
-            const userInfo = userInfoList[0];
-            debug('userInfo: ' + JSON.stringify(userInfo));
 
-            createAuthResponse(userInfo, (err, authResponse) => {
+            const userShortInfo = userInfoList[0];
+            // Load the user to get all information (e.g., groups and validated status)
+            debug('userInfo: ' + JSON.stringify(userShortInfo));
+            wicked.apiGet(`/users/${userShortInfo.id}`, (err, userInfo) => {
                 if (err)
                     return callback(err);
-                return callback(null, authResponse);
+                createAuthResponse(userInfo, (err, authResponse) => {
+                    if (err)
+                        return callback(err);
+                    return callback(null, authResponse);
+                });
             });
         });
+    }
+
+    function createDefaultProfile(userInfo) {
+        debug('createDefaultProfile()');
+        // For the local users, we don't have anything to put into the
+        // default profile except the user ID and the email address.
+        // For other IdPs, there may be other fields which can be prepopulated.
+        const oidcProfile = {
+            sub: userInfo.id,
+            email: userInfo.email,
+            email_verified: userInfo.validated,
+        };
+        debug(oidcProfile);
+        return oidcProfile;
     }
 
     function createAuthResponse(userInfo, callback) {
         debug('createAuthResponse()');
 
-        utilsOAuth2.wickedUserInfoToOidcProfile(userInfo, (err, oidcProfile) => {
-            if (err)
-                return callback(err);
-            return callback(null, {
-                userId: userInfo.id,
-                customId: null,
-                defaultGroups: userInfo.groups,
-                defaultProfile: oidcProfile // Meh
-            });
+        // TODO: Namespace handling
+        return callback(null, {
+            userId: userInfo.id,
+            customId: null,
+            defaultGroups: userInfo.groups,
+            defaultProfile: createDefaultProfile(userInfo)
         });
     }
 

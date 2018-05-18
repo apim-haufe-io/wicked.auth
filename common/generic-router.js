@@ -188,10 +188,14 @@ function GenericOAuth2Router(basePath, authMethodId/*, csrfProtection*/) {
                 debug(authResponse);
 
                 if (!poolId) {
-                    // Nope, just go ahead
+                    if (authResponse.registrationPool)
+                        delete authResponse.registrationPool;
+                    // Nope, just go ahead; use the default Profile as profile
+                    authResponse.profile = utils.clone(authResponse.defaultProfile);
                     return authorizeFlow(req, res, next);
                 }
 
+                authResponse.registrationPool = poolId;
                 debug(`API requires registration with pool '${poolId}', starting registration flow`);
 
                 // We'll do the registrationFlow first then...
@@ -255,7 +259,26 @@ function GenericOAuth2Router(basePath, authMethodId/*, csrfProtection*/) {
         // ...
         debug(`/register`);
 
-        return failMessage(500, 'Not implemented', next);
+        // First, check the registration nonce
+        const sessionData = req.session[authMethodId];
+        const nonce = req.body.nonce;
+        if (!nonce)
+            return failMessage(400, 'Registration nonce missing.', next);
+        if (nonce !== sessionData.registrationNonce)
+            return failMessage(400, 'Registration nonce mismatch.', next);
+
+        // OK, this looks fine.
+        const userId = sessionData.authResponse.userId;
+        const poolId = sessionData.authResponse.registrationPool;
+
+        // The backend validates the data
+        wicked.apiPut(`/registrations/pools/${poolId}/users/${userId}`, req.body, (err) => {
+            if (err)
+                return failError(500, err, next);
+            
+            // Go back to the registration flow now
+            return registrationFlow(poolId, req, res, next);
+        });
     });
 
     // =============================================
@@ -265,7 +288,8 @@ function GenericOAuth2Router(basePath, authMethodId/*, csrfProtection*/) {
     function registrationFlow(poolId, req, res, next) {
         debug('registrationFlow()');
 
-        const userId = req.session[authMethodId].authResponse.userId;
+        const authResponse = req.session[authMethodId].authResponse;
+        const userId = authResponse.userId;
         wicked.apiGet(`/registrations/pools/${poolId}/users/${userId}`, (err, regInfo) => {
             if (err && err.statusCode !== 404)
                 return failError(500, err, next);
@@ -274,9 +298,14 @@ function GenericOAuth2Router(basePath, authMethodId/*, csrfProtection*/) {
                 // User does not have a registration here, we need to get one
                 return renderRegister(req, res, next);
             } else {
-                // User already has a registration, pass it back
-                // TODO? Here we could check for not filled required fields
-
+                // User already has a registration, create a suitable profile
+                // TODO: Here we could check for not filled required fields
+                utilsOAuth2.makeOidcProfile(poolId, authResponse, regInfo, (err, profile) => {
+                    if (err)
+                        return utils.failError(500, err, next);
+                    authResponse.profile = profile;
+                    return authorizeFlow(req, res, next);
+                });
             }
         });
     }
@@ -314,6 +343,9 @@ function GenericOAuth2Router(basePath, authMethodId/*, csrfProtection*/) {
             viewModel.customId = authResponse.customId;
             viewModel.defaultProfile = authResponse.defaultProfile;
             viewModel.poolInfo = poolInfo;
+            const nonce = utils.createRandomId();
+            req.session[authMethodId].registrationNonce = nonce;
+            viewModel.nonce = nonce;
 
             debug(viewModel);
             res.render('register', viewModel);
@@ -392,6 +424,12 @@ function GenericOAuth2Router(basePath, authMethodId/*, csrfProtection*/) {
                             }, 500);
                         }
 
+                        // TODO: Check registration status - This can only work for APIs which need
+                        // a registration if the user already *is* registered. OR: See above, in certain
+                        // LDAP cases (configurable?) all registration data may already be taken from the
+                        // default profile, and we're fine. This has to be checked what is (legally) allowed
+                        // and what is (technically) possible.
+
                         // This was fine. Now check if we can issue a token.
                         tokenRequest.authenticated_userid = authResponse.userId;
                         tokenRequest.session_data = authResponse.profile;
@@ -413,12 +451,19 @@ function GenericOAuth2Router(basePath, authMethodId/*, csrfProtection*/) {
                 if (err)
                     return callback(err);
                 debug('loadUserAndProfile returned.');
-                utilsOAuth2.wickedUserInfoToOidcProfile(userInfo, (err, oidcProfile) => {
-                    if (err)
-                        return callback(err);
-                    authResponse.profile = oidcProfile;
-                    return callback(null, authResponse);
-                });
+
+                // TODO: This is not good, and will not work like this
+                // ATTENTION: This ought just fill userId and customId.
+                // The rest is done when handling the registrations (see
+                // registrationFlow()).
+
+                return callback(new Error('NOT IMPLEMENTED'));
+                // utilsOAuth2.wickedUserInfoToOidcProfile(userInfo, (err, oidcProfile) => {
+                //     if (err)
+                //         return callback(err);
+                //     authResponse.profile = oidcProfile;
+                //     return callback(null, authResponse);
+                // });
             });
         }
 
@@ -449,28 +494,28 @@ function GenericOAuth2Router(basePath, authMethodId/*, csrfProtection*/) {
     // Takes an authResponse, returns an authResponse
     function createUserFromDefaultProfile(authResponse, callback) {
         debug('createUserFromDefaultProfile()');
-        const p = authResponse.defaultProfile;
         // The defaultProfile MUST contain an email address.
         // The id of the new user is created by the API and returned here;
         // This is still an incognito user, name and such are amended later
         // in the process, via the registration.
         const userCreateInfo = {
-            customId: authResponse.customId,
-            email: p.email,
-            validated: p.email_verified
+            customId:  authResponse.customId,
+            email:     authResponse.defaultProfile.email,
+            validated: authResponse.defaultProfile.email_verified
         };
         wicked.apiPost('/users', userCreateInfo, (err, userInfo) => {
             if (err) {
-                debug('createUserFromDefaultProfile: POST to /users failed.');
-                debug(err);
+                error('createUserFromDefaultProfile: POST to /users failed.');
+                error(err);
                 return callback(err);
             }
             debug(`createUserFromDefaultProfile: Created new user with id ${userInfo.id}`);
+            // Hmmmmmm
             utilsOAuth2.wickedUserInfoToOidcProfile(userInfo, (err, oidcProfile) => {
                 if (err)
                     return callback(err);
                 authResponse.userId = userInfo.id;
-                authResponse.profile = oidcProfile;
+                //authResponse.profile = oidcProfile;
                 return callback(null, authResponse);
             });
         });

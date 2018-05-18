@@ -8,6 +8,7 @@ const request = require('request');
 const { failMessage, failError, failOAuth, makeError } = require('./utils-fail');
 const profileStore = require('./profile-store');
 
+const utils = require('./utils');
 const oauth2 = require('../kong-oauth2/oauth2');
 const tokens = require('../kong-oauth2/tokens');
 
@@ -260,15 +261,9 @@ function makeFullName(userInfo) {
     return "No Name";
 }
 
-utilsOAuth2.wickedUserInfoToOidcProfile = function (userInfo, callback) {
-    debug('wickedUserInfoToOidcProfile()');
-    // This is subject to heavy change, possibly and probably, and
-    // will also consist of fetching a profile/registration info from
-    // the wicked API.
-
-    // But perhaps not - let's see; this may possibly be done by the
-    // generic auth thingie, when it checks whether a user is already registered
-    // or not.
+utilsOAuth2.wickedUserInfoToOidcProfileSync = function (userInfo) {
+    debug('wickedUserInfoToOidcProfileSync()');
+    // Simple mapping to some basic OIDC profile claims
     const oidcProfile = {
         sub: userInfo.id,
         email: userInfo.email,
@@ -278,7 +273,47 @@ utilsOAuth2.wickedUserInfoToOidcProfile = function (userInfo, callback) {
         // family_name: userInfo.lastName
         // // admin: userInfo.admin // No no noooo
     };
-    return callback(null, oidcProfile);
+    return oidcProfile;
+};
+
+utilsOAuth2.wickedUserInfoToOidcProfile = function (userInfo, callback) {
+    debug('wickedUserInfoToOidcProfile()');
+    return callback(null, utilsOAuth2.wickedUserInfoToOidcProfileSync(userInfo));
+};
+
+utilsOAuth2.makeOidcProfile = function (poolId, authResponse, regInfo, callback) {
+    debug(`makeOidcProfile(${poolId}, ${authResponse.userId})`);
+    const userId = authResponse.userId;
+    // OK; we might be able to get the information from somewhere else, but let's keep
+    // it simple.
+
+    async.parallel({
+        userInfo: callback => wicked.apiGet(`/users/${userId}`, callback),
+        poolInfo: callback => utils.getPoolInfo(poolId, callback)
+    }, (err, results) => {
+        if (err)
+            return callback(err);
+        const userInfo = results.userInfo;
+        const poolInfo = results.poolInfo;
+
+        const profile = utilsOAuth2.wickedUserInfoToOidcProfileSync(userInfo);
+        // Now let's see what we can map from the registration
+        for (let propName in poolInfo.properties) {
+            if (!regInfo[propName])
+                continue;
+            const propInfo = poolInfo.properties[propName];
+            // If the property doesn't include a mapping to an OIDC claim, we can't use it
+            if (!propInfo.oidcClaim)
+                continue;
+            // Now assign the value to the OIDC claim in the profile
+            profile[propInfo.oidcClaim] = regInfo[propName];
+        }
+
+        debug('makeOidcProfile() assembled the following profile:');
+        debug(profile);
+
+        return callback(null, profile);
+    });
 };
 
 // Whoa, this is closures galore.

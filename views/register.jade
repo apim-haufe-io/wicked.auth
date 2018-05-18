@@ -51,6 +51,7 @@ block content
     form(role='form' action='#{baseUrl}/#{registerUrl}' method='post' onsubmit='return validateRegister();')
 
         input(type='hidden' name='_csrf' value='#{csrfToken}')
+        input(type='hidden' name='nonce' value='#{nonce}')
 
         if custom_id
             .form-group
