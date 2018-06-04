@@ -1,8 +1,6 @@
 extends auth_layout
 
 block scripts
-    //- if authUser
-    //-     meta(http-equiv="refresh" content="0; url=/")
     script(type='text/javascript').
         function validateRegister() {
             const model = !{JSON.stringify(poolInfo)};

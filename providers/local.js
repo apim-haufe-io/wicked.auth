@@ -2,6 +2,7 @@
 
 const { debug, info, warn, error } = require('portal-env').Logger('portal-auth:local');
 const qs = require('querystring');
+const request = require('request');
 const wicked = require('wicked-sdk');
 const Router = require('express').Router;
 
@@ -76,6 +77,33 @@ function LocalIdP(basePath, authMethodId/*, csrfProtection*/) {
         renderSignup(req, res);
     };
 
+    const verifyRecaptcha = (req, callback) => {
+        if (req.app.glob.recaptcha && req.app.glob.recaptcha.useRecaptcha) {
+            var secretKey = req.app.glob.recaptcha.secretKey;
+            var recaptchaResponse = req.body['g-recaptcha-response'];
+            request.post({
+                url: 'https://www.google.com/recaptcha/api/siteverify',
+                formData: {
+                    secret: secretKey,
+                    response: recaptchaResponse
+                }
+            }, function (err, apiResponse, apiBody) {
+                if (err)
+                    return callback(err);
+                var recaptchaBody = utils.getJson(apiBody);
+                if (!recaptchaBody.success) {
+                    let err = new Error('ReCAPTCHA response invalid - Please try again');
+                    err.status = 403;
+                    return callback(err);
+                }
+
+                callback(null);
+            });
+        } else {
+            callback(null);
+        }
+    };
+
     this.signupPostHandler = (req, res, next) => {
         debug(`POST ${authMethodId}/signup`);
         debug('signupPostHandler()');
@@ -89,28 +117,33 @@ function LocalIdP(basePath, authMethodId/*, csrfProtection*/) {
         if (password !== password2)
             return failMessage(400, 'Passwords do not match', next);
 
-        // Let's give it a shot; wicked can still intervene here...
-        const userCreateInfo = {
-            email: email,
-            password: password,
-            groups: [],
-            validated: false
-        };
-        debug(`signupPostHandler: Attempting to create user ${email}`);
-        wicked.apiPost('/users', userCreateInfo, (err, userInfo) => {
+        // Recaptcha?
+        verifyRecaptcha(req, (err) => {
             if (err)
-                return failError(500, err, next);
-
-            debug(`signupPostHandler: Successfully created user ${email} with id ${userInfo.id}`);
-
-            createAuthResponse(userInfo, (err, authResponse) => {
+                return failError(403, err, next);
+            // Let's give it a shot; wicked can still intervene here...
+            const userCreateInfo = {
+                email: email,
+                password: password,
+                groups: [],
+                validated: false
+            };
+            debug(`signupPostHandler: Attempting to create user ${email}`);
+            wicked.apiPost('/users', userCreateInfo, (err, userInfo) => {
                 if (err)
                     return failError(500, err, next);
-                debug(`signupPostHandler: Successfully created an authResponse`);
-                debug(authResponse);
 
-                // We're practically logged in now, as the new user.
-                genericFlow.continueAuthorizeFlow(req, res, next, authResponse);
+                debug(`signupPostHandler: Successfully created user ${email} with id ${userInfo.id}`);
+
+                createAuthResponse(userInfo, (err, authResponse) => {
+                    if (err)
+                        return failError(500, err, next);
+                    debug(`signupPostHandler: Successfully created an authResponse`);
+                    debug(authResponse);
+
+                    // We're practically logged in now, as the new user.
+                    genericFlow.continueAuthorizeFlow(req, res, next, authResponse);
+                });
             });
         });
     };
@@ -143,7 +176,8 @@ function LocalIdP(basePath, authMethodId/*, csrfProtection*/) {
             logoutUrl: `logout`,
             signupUrl: `${authMethodId}/signup`,
             registerUrl: `${authMethodId}/register`,
-            forgotPasswordUrl: `${authMethodId}/forgotpassword`
+            forgotPasswordUrl: `${authMethodId}/forgotpassword`,
+            recaptcha: req.app.glob.recaptcha
         };
     }
 

@@ -1,8 +1,7 @@
 extends auth_layout
 
 block scripts
-    //- if authUser
-    //-     meta(http-equiv="refresh" content="0; url=/")
+    script(src='https://www.google.com/recaptcha/api.js')
     script(type='text/javascript').
         function validateSignup() {
             var email = $('#email').val();
@@ -21,6 +20,9 @@ block scripts
                 password2Error = 'Please repeat your password.';
             if (!password2Error && password !== password2)
                 password2Error = 'Passwords do not match';
+            if (!password
+                || (password.length < 6 || password.length > 24))
+                passwordError = 'Please enter a password, more than 5, less than 25 characters long.';
 
             try {
                 $('#errorEmail').text(emailError);
@@ -50,24 +52,6 @@ block content
         By signing up to this portal, you agree to our <a target='_blank' href='#{portalUrl}content/terms-and-conditions'>Terms
         and Conditions</a> and the <a target='_blank' href='#{portalUrl}content/privacy-policy'>Privacy/Cookie Policy</a>.
 
-    //- if glob.auth.adfs && glob.auth.adfs.useAdfs
-    //-     a(href='/login/adfs').btn.btn-block.btn-lg.btn-primary
-    //-         i.fa.fa-cloud.fa-lg
-    //-         span &nbsp; Login with ADFS
-    //- if glob.auth.github && glob.auth.github.useGithub
-    //-     a(href="/login/github").btn.btn-lg.btn-block.btn-github
-    //-         i.fa.fa-github.fa-lg
-    //-         span &nbsp; Log in with GitHub
-    //- if glob.auth.google && glob.auth.google.useGoogle
-    //-     a(href="/login/google").btn.btn-lg.btn-block.btn-google
-    //-         i.fa.fa-google.fa-lg
-    //-         span &nbsp; Log in with Google
-
-    //- if glob.auth.local && glob.auth.local.useLocal
-    //-     br                            
-    //-     hr
-    //-     br
-
     if errorMessage
         div(role='alert').alert.alert-danger
             span(aria-hidden="true").glyphicon.glyphicon-exclamation-sign
@@ -93,6 +77,9 @@ block content
             input(type='password' name='password2' id='password2').form-control
             small
                 span(id='errorPassword2' style='color:red')
+        if recaptcha && recaptcha.useRecaptcha
+            div(class='g-recaptcha' data-sitekey='#{recaptcha.websiteKey}')
+            br
         button(class='btn btn-lg btn-primary btn-block' type='submit') Sign up
     
     h5

@@ -456,8 +456,10 @@ function GenericOAuth2Router(basePath, authMethodId/*, csrfProtection*/) {
                 // ATTENTION: This ought just fill userId and customId.
                 // The rest is done when handling the registrations (see
                 // registrationFlow()).
+                const oidcProfile = utilsOAuth2.wickedUserInfoToOidcProfileSync(userInfo);
+                authResponse.profile = oidcProfile;
 
-                return callback(new Error('NOT IMPLEMENTED'));
+                return callback(null, authResponse);
                 // utilsOAuth2.wickedUserInfoToOidcProfile(userInfo, (err, oidcProfile) => {
                 //     if (err)
                 //         return callback(err);
