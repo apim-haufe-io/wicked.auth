@@ -119,7 +119,7 @@ app.initApp = function (authServerConfig, callback) {
         debug(`Activating auth method ${authMethod.name} with type ${authMethod.type}.`);
         switch (authMethod.type) {
             case "local":
-                app.use(authUri, new LocalIdP(basePath, authMethod.name).getRouter());
+                app.use(authUri, new LocalIdP(basePath, authMethod.name, authMethod.config).getRouter());
                 //app.use(authUri, new LocalAuth(basePath, authMethod.name, csrfProtection));
                 break;
             case "dummy":

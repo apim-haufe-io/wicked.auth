@@ -12,11 +12,12 @@ const { failMessage, failError, failOAuth, makeError } = require('../common/util
 const profileStore = require('../common/profile-store');
 const GenericOAuth2Router = require('../common/generic-router');
 
-function LocalIdP(basePath, authMethodId/*, csrfProtection*/) {
+function LocalIdP(basePath, authMethodId, authMethodConfig/*, csrfProtection*/) {
 
     const genericFlow = new GenericOAuth2Router(basePath, authMethodId);
     this.basePath = basePath;
     this.authMethodId = authMethodId;
+    this.config = authMethodConfig;
 
     this.getRouter = () => {
         return genericFlow.getRouter();
@@ -45,6 +46,26 @@ function LocalIdP(basePath, authMethodId/*, csrfProtection*/) {
                 method: 'post',
                 uri: '/signup',
                 handler: this.signupPostHandler
+            },
+            {
+                method: 'get',
+                uri: '/verify/:verificationId',
+                handler: utils.createVerifyHandler(authMethodId)
+            },
+            {
+                method: 'post',
+                uri: '/verify',
+                handler: utils.createVerifyEmailPostHandler(authMethodId)
+            },
+            {
+                method: 'get',
+                uri: '/forgotpassword',
+                handler: utils.createForgotPasswordHandler(authMethodId)
+            },
+            {
+                method: 'post',
+                uri: '/forgotpassword',
+                handler: utils.createForgotPasswordPostHandler(authMethodId)
             }
         ];
     };
@@ -77,33 +98,6 @@ function LocalIdP(basePath, authMethodId/*, csrfProtection*/) {
         renderSignup(req, res);
     };
 
-    const verifyRecaptcha = (req, callback) => {
-        if (req.app.glob.recaptcha && req.app.glob.recaptcha.useRecaptcha) {
-            var secretKey = req.app.glob.recaptcha.secretKey;
-            var recaptchaResponse = req.body['g-recaptcha-response'];
-            request.post({
-                url: 'https://www.google.com/recaptcha/api/siteverify',
-                formData: {
-                    secret: secretKey,
-                    response: recaptchaResponse
-                }
-            }, function (err, apiResponse, apiBody) {
-                if (err)
-                    return callback(err);
-                var recaptchaBody = utils.getJson(apiBody);
-                if (!recaptchaBody.success) {
-                    let err = new Error('ReCAPTCHA response invalid - Please try again');
-                    err.status = 403;
-                    return callback(err);
-                }
-
-                callback(null);
-            });
-        } else {
-            callback(null);
-        }
-    };
-
     this.signupPostHandler = (req, res, next) => {
         debug(`POST ${authMethodId}/signup`);
         debug('signupPostHandler()');
@@ -118,15 +112,16 @@ function LocalIdP(basePath, authMethodId/*, csrfProtection*/) {
             return failMessage(400, 'Passwords do not match', next);
 
         // Recaptcha?
-        verifyRecaptcha(req, (err) => {
+        utils.verifyRecaptcha(req, (err) => {
             if (err)
                 return failError(403, err, next);
             // Let's give it a shot; wicked can still intervene here...
+            const emailValidated = authMethodConfig.trustUsers;
             const userCreateInfo = {
                 email: email,
                 password: password,
                 groups: [],
-                validated: false
+                validated: emailValidated
             };
             debug(`signupPostHandler: Attempting to create user ${email}`);
             wicked.apiPost('/users', userCreateInfo, (err, userInfo) => {
@@ -135,14 +130,20 @@ function LocalIdP(basePath, authMethodId/*, csrfProtection*/) {
 
                 debug(`signupPostHandler: Successfully created user ${email} with id ${userInfo.id}`);
 
-                createAuthResponse(userInfo, (err, authResponse) => {
+                // Check whether we want to verify the email address or not
+                utils.createVerificationRequest(authMethodConfig.trustUsers, authMethodId, userInfo, (err) => {
                     if (err)
                         return failError(500, err, next);
-                    debug(`signupPostHandler: Successfully created an authResponse`);
-                    debug(authResponse);
 
-                    // We're practically logged in now, as the new user.
-                    genericFlow.continueAuthorizeFlow(req, res, next, authResponse);
+                    createAuthResponse(userInfo, (err, authResponse) => {
+                        if (err)
+                            return failError(500, err, next);
+                        debug(`signupPostHandler: Successfully created an authResponse`);
+                        debug(authResponse);
+
+                        // We're practically logged in now, as the new user.
+                        genericFlow.continueAuthorizeFlow(req, res, next, authResponse);
+                    });
                 });
             });
         });
@@ -166,30 +167,15 @@ function LocalIdP(basePath, authMethodId/*, csrfProtection*/) {
         });
     };
 
-    function makeViewModel(req) {
-        return {
-            title: req.app.glob.title,
-            portalUrl: wicked.getExternalPortalUrl(),
-            baseUrl: req.app.get('base_path'),
-            // csrfToken: req.csrfToken(),
-            loginUrl: `${authMethodId}/login`,
-            logoutUrl: `logout`,
-            signupUrl: `${authMethodId}/signup`,
-            registerUrl: `${authMethodId}/register`,
-            forgotPasswordUrl: `${authMethodId}/forgotpassword`,
-            recaptcha: req.app.glob.recaptcha
-        };
-    }
-
     function renderLogin(req, res, flashError) {
         debug('renderLogin()');
-        const viewModel = makeViewModel(req);
+        const viewModel = utils.createViewModel(req, authMethodId);
         res.render('login', viewModel);
     }
 
     function renderSignup(req, res) {
         debug('renderSignup()');
-        res.render('signup', makeViewModel(req));
+        res.render('signup', utils.createViewModel(req, authMethodId));
     }
 
     function loginUser(username, password, callback) {
