@@ -55,6 +55,16 @@ function LocalIdP(basePath, authMethodId, authMethodConfig/*, csrfProtection*/) 
             {
                 method: 'post',
                 uri: '/verify',
+                handler: utils.createVerifyPostHandler(authMethodId)
+            },
+            {
+                method: 'get',
+                uri: '/verifyemail',
+                handler: utils.createVerifyEmailHandler(authMethodId)
+            },
+            {
+                method: 'post',
+                uri: '/verifyemail',
                 handler: utils.createVerifyEmailPostHandler(authMethodId)
             },
             {
@@ -131,7 +141,7 @@ function LocalIdP(basePath, authMethodId, authMethodConfig/*, csrfProtection*/) 
                 debug(`signupPostHandler: Successfully created user ${email} with id ${userInfo.id}`);
 
                 // Check whether we want to verify the email address or not
-                utils.createVerificationRequest(authMethodConfig.trustUsers, authMethodId, userInfo, (err) => {
+                utils.createVerificationRequest(authMethodConfig.trustUsers, authMethodId, userInfo.email, (err) => {
                     if (err)
                         return failError(500, err, next);
 

@@ -45,6 +45,33 @@ utils.getJson = function (ob) {
     return ob;
 };
 
+// https://stackoverflow.com/questions/263965/how-can-i-convert-a-string-to-boolean-in-javascript
+utils.parseBool = (str) => {
+    debug(`parseBool(${str})`);
+    if (str == null)
+        return false;
+
+    if (typeof (str) === 'boolean')
+        return (str === true);
+
+    if (typeof (str) === 'string') {
+        if (str == "")
+            return false;
+
+        str = str.replace(/^\s+|\s+$/g, '');
+        if (str.toLowerCase() == 'true' || str.toLowerCase() == 'yes')
+            return true;
+
+        str = str.replace(/,/g, '.');
+        str = str.replace(/^\s*\-\s*/g, '-');
+    }
+
+    if (!isNaN(str))
+        return (parseFloat(str) != 0);
+
+    return false;
+};
+
 utils.isPublic = function (uriName) {
     return uriName.endsWith('jpg') ||
         uriName.endsWith('jpeg') ||
@@ -287,8 +314,8 @@ utils.verifyRecaptcha = (req, callback) => {
     }
 };
 
-utils.createVerificationRequest = (trustUsers, authMethodId, userInfo, callback) => {
-    debug(`createVerificationRequest(${authMethodId}, ${userInfo.email})`);
+utils.createVerificationRequest = (trustUsers, authMethodId, email, callback) => {
+    debug(`createVerificationRequest(${authMethodId}, ${email})`);
 
     if (trustUsers) {
         debug('not creating verification requests, users are implicitly trusted');
@@ -303,7 +330,7 @@ utils.createVerificationRequest = (trustUsers, authMethodId, userInfo, callback)
     // Now we need to create a verification request with the wicked API (as the machine user)
     const verifBody = {
         type: 'email',
-        email: userInfo.email,
+        email: email,
         link: verificationLink
     };
     wicked.apiPost('/verifications', verifBody, callback);
@@ -322,6 +349,7 @@ utils.createViewModel = (req, authMethodId) => {
         signupUrl: `${authMethodId}/signup`,
         registerUrl: `${authMethodId}/register`,
         forgotPasswordUrl: `${authMethodId}/forgotpassword`,
+        verifyEmailUrl: `${authMethodId}/verifyemail`,
         verifyPostUrl: `${authMethodId}/verify`,
         recaptcha: req.app.glob.recaptcha
     };
@@ -367,10 +395,10 @@ utils.createVerifyHandler = (authMethodId) => {
     };
 };
 
-utils.createVerifyEmailPostHandler = (authMethodId) => {
-    debug(`createVerifyEmailPostHandler(${authMethodId})`);
+utils.createVerifyPostHandler = (authMethodId) => {
+    debug(`createVerifyPostHandler(${authMethodId})`);
     return (req, res, next) => {
-        debug(`verifyEmailPostHandler(${authMethodId})`);
+        debug(`verifyPostHandler(${authMethodId})`);
 
         const body = req.body;
         const expectedCsrfToken = utils.getAndDeleteCsrfToken(req);
@@ -495,6 +523,90 @@ utils.createForgotPasswordPostHandler = (authMethodId) => {
         const viewModel = utils.createViewModel(req, authMethodId);
         res.render('forgot_password_post', viewModel);
     };
+};
+
+utils.createVerifyEmailHandler = (authMethodId) => {
+    debug(`createVerifyEmailHandler(${authMethodId})`);
+    return (req, res, next) => {
+        debug(`verifyEmailHandler(${authMethodId})`);
+
+        // Steps:
+        // 1. Verify that the user is logged in
+        // 2. Display a small form
+        // 3. Let user click a button and we will send an email (via portal-mailer)
+
+        if (!utils.isLoggedIn(req, authMethodId)) {
+            // User is not logged in; make sure we do that first
+            const thisUri = req.originalUrl;
+            const redirectUri = `${req.app.get('base_path')}/${authMethodId}/login?redirect_uri=${qs.escape(thisUri)}`;
+            return res.redirect(redirectUri);
+        }
+        // const redirectUri = `${req.app.get('base_url')}${authMethodId}/verifyemail`;
+
+        debug(`verifyEmailHandler(${authMethodId}): User is correctly logged in.`);
+
+        const viewModel = utils.createViewModel(req, authMethodId);
+        viewModel.profile = req.session[authMethodId].authResponse.profile;
+
+        return res.render('verify_email_request', viewModel);
+    };
+};
+
+utils.createVerifyEmailPostHandler = (authMethodId) => {
+    debug(`createVerifyEmailPostHandler(${authMethodId})`);
+    return (req, res, next) => {
+        debug(`verifyEmailPostHandler(${authMethodId})`);
+
+        const body = req.body;
+        const expectedCsrfToken = utils.getAndDeleteCsrfToken(req);
+        const csrfToken = body._csrf;
+
+        if (!utils.isLoggedIn(req, authMethodId))
+            return failMessage(403, 'You must be logged in to request email validation.', next);
+        if (expectedCsrfToken !== csrfToken)
+            return setTimeout(failMessage, ERROR_TIMEOUT, 403, 'CSRF validation failed.', next);
+
+        const profile = utils.getProfile(req, authMethodId);
+        const email = profile.email;
+
+        // If we're here, the user is not trusted (as we're asking for a validation)
+        const trustUsers = false;
+        utils.createVerificationRequest(trustUsers, authMethodId, email, (err) => {
+            if (err)
+                return failError(500, err, next);
+            return res.render('verify_email_request_confirm', utils.createViewModel(req, authMethodId));
+        });
+    };
+};
+
+/**
+ * Returns `true` if the user has an established session with the given `authMethodId`. The function
+ * also checks whether the user has a "profile, which is required if the user is truly logged in.
+ * 
+ * @param {*} req The incoming request
+ * @param {*} authMethodId The auth method id this request applies to
+ */
+utils.isLoggedIn = (req, authMethodId) => {
+    let isLoggedIn = false;
+    if (req.session &&
+        req.session[authMethodId] &&
+        req.session[authMethodId].authResponse &&
+        req.session[authMethodId].authResponse.profile)
+        isLoggedIn = true;
+    debug(`isLoggedIn(${authMethodId}): ${isLoggedIn}`);
+    return isLoggedIn;
+};
+
+/**
+ * Returns the associated user OIDC profile if the user is logged in; otherwise an Error is thrown.
+ * 
+ * @param {*} req 
+ * @param {*} authMethodId 
+ */
+utils.getProfile = (req, authMethodId) => {
+    if (!utils.isLoggedIn(req, authMethodId))
+        throw new Error('Cannot get profile if not logged in');
+    return req.session[authMethodId].authResponse.profile;
 };
 
 module.exports = utils;

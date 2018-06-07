@@ -37,6 +37,18 @@ function GenericOAuth2Router(basePath, authMethodId/*, csrfProtection*/) {
         }
     };
 
+    const initAuthRequest = (req) => {
+        debug(`initAuthRequest(${authMethodId})`);
+        if (!req.session)
+            req.session = {};
+        if (!req.session[authMethodId])
+            req.session[authMethodId] = { authRequest: {} };
+        else // Reset the authRequest even if it's present
+            req.session[authMethodId].authRequest = {};
+        const authRequest = req.session[authMethodId].authRequest;
+        return authRequest;
+    };
+
     // OAuth2 end point Authorize
     oauthRouter.get('/api/:apiId/authorize', /*csrfProtection,*/ function (req, res, next) {
         const apiId = req.params.apiId;
@@ -49,13 +61,7 @@ function GenericOAuth2Router(basePath, authMethodId/*, csrfProtection*/) {
         const givenScope = req.query.scope;
         const givenPrompt = req.query.prompt;
 
-        if (!req.session)
-            req.session = {};
-        if (!req.session[authMethodId])
-            req.session[authMethodId] = { authRequest: {} };
-        else if (!req.session[authMethodId].authRequest)
-            req.session[authMethodId].authRequest = {};
-        const authRequest = req.session[authMethodId].authRequest;
+        const authRequest = initAuthRequest(req);
         authRequest.api_id = apiId;
         authRequest.client_id = clientId;
         authRequest.response_type = responseType;
@@ -78,7 +84,7 @@ function GenericOAuth2Router(basePath, authMethodId/*, csrfProtection*/) {
                 authRequest.api_id,
                 authRequest.scope,
                 authRequest.trusted,
-                function (err, scopeValidationResult) {
+                (err, scopeValidationResult) => {
                     if (err)
                         return next(err);
 
@@ -92,34 +98,72 @@ function GenericOAuth2Router(basePath, authMethodId/*, csrfProtection*/) {
                     // Did we add/change the scopes passed in?
                     authRequest.scopesDiffer = scopeValidationResult.scopesDiffer;
 
-                    let existingAuthResponse = req.session[authMethodId].authResponse;
+                    let isLoggedIn = utils.isLoggedIn(req, authMethodId);
                     // Borrowed from OpenID Connect, check for prompt request for implicit grant
                     // http://openid.net/specs/openid-connect-implicit-1_0.html#RequestParameters
                     if (authRequest.response_type === 'token') {
                         switch (authRequest.prompt) {
                             case 'none':
-                                if (!existingAuthResponse)
+                                if (!isLoggedIn)
                                     return failOAuth(401, 'login_required', 'user must be logged in interactively, cannot authorize without logged in user.', next);
                                 return authorizeFlow(req, res, next);
                             case 'login':
                                 // Force login; wipe session data
-                                if (existingAuthResponse) {
+                                if (isLoggedIn) {
                                     delete req.session[authMethodId].authResponse;
-                                    existingAuthResponse = null;
+                                    isLoggedIn = false;
                                 }
                                 break;
                         }
                     }
                     // We're fine. Check for pre-existing sessions.
-                    if (existingAuthResponse) {
-                        return instance.continueAuthorizeFlow(req, res, next, existingAuthResponse);
+                    if (isLoggedIn) {
+                        const authResponse = req.session[authMethodId].authResponse;
+                        return instance.continueAuthorizeFlow(req, res, next, authResponse);
                     }
 
                     // Not logged in, or forced login
-                    // return local.renderLogin(req, res, apiId);
                     return state.idp.authorizeWithUi(req, res, authRequest);
                 });
         });
+    });
+
+    /**
+     * End point for interactive login without using the OAuth2 mechanisms; this
+     * is used in cases where we need a logged in user, but there is none; e.g.
+     * scope management, or verifying email addresses.
+     * 
+     * This end point displays the provider specific login page, and requires
+     * a redirect URL to get back to (which must be internal to this application).
+     * In short: Use this when you need to make sure that you have a logged in user
+     * and just need to redirect back to a page when it's done.
+     * 
+     * Parameters: Query parameter "redirect_uri", which takes a relative path
+     * to this application (including the base_path).
+     */
+    oauthRouter.get('/login', (req, res, next) => {
+        debug('GET /login - internal login');
+
+        // Verify parameters
+        const redirectUri = req.query.redirect_uri;
+        if (!redirectUri)
+            return failMessage(400, 'Missing redirect_uri query parameter.', next);
+
+        // Are we already logged in?
+        if (utils.isLoggedIn(req, authMethodId)) {
+            // Yup, let's just redirect
+            return res.redirect(redirectUri);
+        }
+
+        // We're not yet logged in; let's do that now
+
+        // Remember we're in a "special mode", so let's create a special type
+        // of authRequest. The authRequest goes into the session.
+        const authRequest = initAuthRequest(req);
+        authRequest.plain = true;
+        authRequest.redirect_uri = redirectUri;
+
+        return state.idp.authorizeWithUi(req, res, authRequest);
     });
 
     /**
@@ -172,8 +216,25 @@ function GenericOAuth2Router(basePath, authMethodId/*, csrfProtection*/) {
             if (err)
                 return failMessage(500, 'checkUserFromAuthResponse: ' + err.message, next);
 
-            if (!req.session[authMethodId].authRequest ||
-                !req.session[authMethodId].authRequest.api_id)
+            const authRequest = req.session[authMethodId].authRequest;
+            if (!authRequest)
+                return failMessage(500, 'Invalid state: authRequest is missing.', next);
+
+            // Check for plain login mode (where there is no API involved)
+            if (authRequest.plain) {
+                if (!authRequest.redirect_uri)
+                    return failMessage(500, 'Invalid state: authRequest.redirect_uri is missing.', next);
+                // In this case, we don't need to check for any registrations; this is actually
+                // not possible here, as there is no API to check with. We'll just continue with
+                // redirecting to the redirect_uri in the authRequest (see GET /login).
+                req.session[authMethodId].authResponse = authResponse;
+                
+                debug(`continueAuthorizeFlow(${authMethodId}): Doing plain login/redirecting: ${authRequest.redirect_uri}`);
+                return res.redirect(authRequest.redirect_uri);
+            }
+
+            // Regular mode, we have an API we want to check registration state for.
+            if (!authRequest.api_id)
                 return failMessage(500, 'Invalid state: API in authorization request is missing.', next);
 
             const apiId = req.session[authMethodId].authRequest.api_id;
@@ -275,7 +336,7 @@ function GenericOAuth2Router(basePath, authMethodId/*, csrfProtection*/) {
         wicked.apiPut(`/registrations/pools/${poolId}/users/${userId}`, req.body, (err) => {
             if (err)
                 return failError(500, err, next);
-            
+
             // Go back to the registration flow now
             return registrationFlow(poolId, req, res, next);
         });
@@ -310,20 +371,6 @@ function GenericOAuth2Router(basePath, authMethodId/*, csrfProtection*/) {
         });
     }
 
-    function makeViewModel(req, defaultProfile) {
-        return {
-            title: req.app.glob.title,
-            portalUrl: wicked.getExternalPortalUrl(),
-            baseUrl: req.app.get('base_path'),
-            // csrfToken: req.csrfToken(),
-            loginUrl: `${authMethodId}/login`,
-            logoutUrl: `logout`,
-            signupUrl: `${authMethodId}/signup`,
-            registerUrl: `${authMethodId}/register`,
-            forgotPasswordUrl: `${authMethodId}/forgotpassword`
-        };
-    }
-
     function renderRegister(req, res, next) {
         debug('renderRegister()');
         // The profile is not yet available, doh
@@ -338,7 +385,7 @@ function GenericOAuth2Router(basePath, authMethodId/*, csrfProtection*/) {
             debug('Default profile:');
             debug(authResponse.defaultProfile);
 
-            const viewModel = makeViewModel(req);
+            const viewModel = utils.createViewModel(req, authMethodId);
             viewModel.userId = authResponse.userId;
             viewModel.customId = authResponse.customId;
             viewModel.defaultProfile = authResponse.defaultProfile;
@@ -501,8 +548,8 @@ function GenericOAuth2Router(basePath, authMethodId/*, csrfProtection*/) {
         // This is still an incognito user, name and such are amended later
         // in the process, via the registration.
         const userCreateInfo = {
-            customId:  authResponse.customId,
-            email:     authResponse.defaultProfile.email,
+            customId: authResponse.customId,
+            email: authResponse.defaultProfile.email,
             validated: authResponse.defaultProfile.email_verified
         };
         wicked.apiPost('/users', userCreateInfo, (err, userInfo) => {

@@ -22,6 +22,12 @@ const adfs = require('./providers/adfs');
 
 const LocalIdP = require('./providers/local');
 const DummyIdP = require('./providers/dummy');
+const GithubIdP = require('./providers/github');
+const GoogleIdP = require('./providers/google');
+const TwitterIdP = require('./providers/twitter');
+const FacebookIdP = require('./providers/facebook');
+const AdfsIdP = require('./providers/adfs');
+const SamlIdP = require('./providers/saml');
 
 const utils = require('./common/utils');
 const utilsOAuth2 = require('./common/utils-oauth2');
@@ -116,15 +122,25 @@ app.initApp = function (authServerConfig, callback) {
     for (let i = 0; i < authServerConfig.authMethods.length; ++i) {
         const authMethod = authServerConfig.authMethods[i];
         const authUri = `${basePath}/${authMethod.name}`;
-        debug(`Activating auth method ${authMethod.name} with type ${authMethod.type}.`);
+        let enabled = true;
+        if (authMethod.hasOwnProperty("enabled"))
+            enabled = utils.parseBool(authMethod.enabled);
+        if (!enabled) {
+            info(`Skipping disabled auth method ${authMethod.name}.`);
+            continue;
+        }
+        info(`Activating auth method ${authMethod.name} with type ${authMethod.type}.`);
         switch (authMethod.type) {
             case "local":
                 app.use(authUri, new LocalIdP(basePath, authMethod.name, authMethod.config).getRouter());
                 //app.use(authUri, new LocalAuth(basePath, authMethod.name, csrfProtection));
                 break;
             case "dummy":
-                app.use(authUri, new DummyIdP(basePath, authMethod.name).getRouter());
+                app.use(authUri, new DummyIdP(basePath, authMethod.name, authMethod.config).getRouter());
                 break;
+            // case "github":
+            //     app.use(authUri, new GithubIdP(basePath, authMethod.name, authMethod.config).getRouter());
+            //     break;
             default:
                 error('ERROR: Unknown authMethod type ' + authMethod.type);
                 break;

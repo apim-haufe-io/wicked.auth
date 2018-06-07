@@ -26,11 +26,11 @@ github.init = function (app, authConfig) {
     github.authenticateSettings.failureRedirect = github.basePath + '/failure'; 
 
     if (!authConfig.github.clientId)
-        throw new Error('In auth-server configuration, property "google", the property "clientId" is missing.');
+        throw new Error('In auth-server configuration, property "github", the property "clientId" is missing.');
     if (!authConfig.github.clientSecret)
-        throw new Error('In auth-server configuration, property "google", the property "clientSecret" is missing.');
+        throw new Error('In auth-server configuration, property "github", the property "clientSecret" is missing.');
     if (!authConfig.github.callbackUrl)
-        throw new Error('In auth-server configuration, property "google", the property "callbackUrl" is missing.');
+        throw new Error('In auth-server configuration, property "github", the property "callbackUrl" is missing.');
 
     passport.use(new GithubStrategy({
         clientID: authConfig.github.clientId,
@@ -98,24 +98,24 @@ function normalizeProfile(profile, accessToken, callback) {
 
 function getEmailData(emailResponse) {
     debug('getEmailData()');
-    var email = {
+    const email = {
         email: null,
         validated: false
     };
-    var primaryEmail = emailResponse.find(function (emailItem) { return emailItem.primary; });
+    const primaryEmail = emailResponse.find(function (emailItem) { return emailItem.primary; });
     if (primaryEmail) {
         email.email = primaryEmail.email;
         email.validated = primaryEmail.verified;
         return email;
     }
-    var validatedEmail = emailResponse.find(function (emailItem) { return emailItem.verified; });
+    const validatedEmail = emailResponse.find(function (emailItem) { return emailItem.verified; });
     if (validatedEmail) {
         email.email = validatedEmail.email;
         email.validated = validatedEmail.verified;
         return email;
     }
     if (emailResponse.length > 0) {
-        var firstEmail = emailResponse[0];
+        const firstEmail = emailResponse[0];
         email.email = firstEmail.email;
         email.validated = firstEmail.verified;
         return email;
