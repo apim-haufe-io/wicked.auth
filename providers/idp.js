@@ -1,12 +1,27 @@
 'use strict';
 
+const { debug, info, warn, error } = require('portal-env').Logger('portal-auth:local');
+const Router = require('express').Router;
+
+const utils = require('../common/utils');
+const { failMessage, failError, failOAuth, makeError } = require('../common/utils-fail');
+
+const GenericOAuth2Router = require('../common/generic-router');
+
 /**
  * This is a sample of how an IdP must work to be able to integrate into
  * the generic OAuth2 workflow in generic.js
  */
-function IdP(genericFlow, authMethodName) {
-    this.genericFlow = genericFlow;
-    this.name = authMethodName;
+function IdP(basePath, authMethodId, authMethodConfig) {
+
+    const genericFlow = new GenericOAuth2Router(basePath, authMethodId);
+    this.basePath = basePath;
+    this.authMethodId = authMethodId;
+    this.config = authMethodConfig;
+
+    this.getRouter = () => {
+        return genericFlow.getRouter();
+    };
 
     /**
      * In case the user isn't already authenticated, this method will
@@ -28,17 +43,68 @@ function IdP(genericFlow, authMethodName) {
     };
 
     /**
-     * Sample custom end point, e.g. for responding to logins.
+     * In case you need additional end points to be registered, pass them
+     * back to the generic flow implementation here; they will be registered
+     * as "/<authMethodName>/<uri>", and then request will be passed into
+     * the handler function, which is assumed to be of the signature
+     * `function (req, res, next)` (the standard Express signature)
+     */
+    this.endpoints = () => {
+        // This is just a sample endpoint; usually this will be like "callback",
+        // e.g. for OAuth2 callbacks or similar.
+        return [
+            {
+                method: 'post',
+                uri: '/login',
+                handler: this.loginHandler
+            }
+        ];
+    };
+
+    /**
+     * Verify username and password and return the data on the user, like
+     * when authorizing via some 3rd party. If this identity provider cannot
+     * authenticate via username and password, an error will be returned.
+     * 
+     * @param {*} user Username
+     * @param {*} pass Password
+     * @param {*} callback Callback method, `function(err, authenticationData)`
+     */
+    this.authorizeByUserPass = (user, pass, callback) => {
+        // Verify username and password, if possible.
+        // Otherwise (for IdPs where this is not possible), return
+        // an error with a reason. Use utils.failOAuth to create
+        // an error which will be returned as JSON by the framework.
+
+        // Here, we assume user and pass are OK.
+        return callback(null, this.getAuthResponse());
+    };
+
+    this.checkRefreshToken = (tokenInfo, callback) => {
+        // Decide whether it's okay to refresh this token or not, e.g.
+        // by checking that the user is still valid in your database or such;
+        // for 3rd party IdPs, this may be tricky.
+        return callback(null, {
+            allowRefresh: true
+        });
+    };
+
+
+    /**
+     * Sample custom end point, e.g. for responding to logins; see this.endpoints()
+     * for how this is hooked into the processes.
      */
     this.loginHandler = (req, res, next) => {
         // When you're done with whatever (like verifying username and password,
         // or checking a callback from a 3rd party IdP), you must use the registered
         // generic flow implementation object (genericFlow from the constructor) to
         // pass back the same type of structure as in the authorizeByUserPass below.
-        this.genericFlow.continueAuthorizeFlow(req, res, next, this.getAuthenticationResponse());
+        genericFlow.continueAuthorizeFlow(req, res, next, this.getAuthResponse());
     };
 
-    this.getAuthenticationResponse = () => {
+
+    // Sample implementation
+    this.getAuthResponse = () => {
         // This is obviously just dummy code showing how the response
         // must look like to play nice with the 
         return {
@@ -70,51 +136,6 @@ function IdP(genericFlow, authMethodName) {
                 // http://openid.net/specs/openid-connect-core-1_0.html#Claims
             }
         };
-    };
-
-    /**
-     * In case you need additional end points to be registered, pass them
-     * back to the generic flow implementation here; they will be registered
-     * as "/<authMethodName>/<uri>", and then request will be passed into
-     * the handler function, which is assumed to be of the signature
-     * `function (req, res, next)` (the standard Express signature)
-     */
-    this.endpoints = () => {
-        return [
-            {
-                method: 'post',
-                uri: '/login',
-                handler: this.loginHandler
-            }
-        ];
-    };
-
-    /**
-     * Verify username and password and return the data on the user, like
-     * when authorizing via some 3rd party. If this identity provider cannot
-     * authenticate via username and password, an error will be returned.
-     * 
-     * @param {*} user Username
-     * @param {*} pass Password
-     * @param {*} callback Callback method, `function(err, authenticationData)`
-     */
-    this.authorizeByUserPass = (user, pass, callback) => {
-        // Verify username and password, if possible.
-        // Otherwise (for IdPs where this is not possible), return
-        // an error with a reason. Use utils.failOAuth to create
-        // an error which will be returned as JSON by the framework.
-
-        // Here, we assume user and pass are OK.
-        return callback(null, this.getAuthenticationResponse());
-    };
-
-    this.checkRefreshToken = (tokenInfo, callback) => {
-        // Decide whether it's okay to refresh this token or not, e.g.
-        // by checking that the user is still valid in your database or such;
-        // for 3rd party IdPs, this may be tricky.
-        return callback(null, {
-            allowRefresh: true
-        });
     };
 }
 

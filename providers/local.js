@@ -1,18 +1,14 @@
 'use strict';
 
 const { debug, info, warn, error } = require('portal-env').Logger('portal-auth:local');
-const qs = require('querystring');
-const request = require('request');
 const wicked = require('wicked-sdk');
 const Router = require('express').Router;
 
 const utils = require('../common/utils');
-const utilsOAuth2 = require('../common/utils-oauth2');
 const { failMessage, failError, failOAuth, makeError } = require('../common/utils-fail');
-const profileStore = require('../common/profile-store');
 const GenericOAuth2Router = require('../common/generic-router');
 
-function LocalIdP(basePath, authMethodId, authMethodConfig/*, csrfProtection*/) {
+function LocalIdP(basePath, authMethodId, authMethodConfig) {
 
     const genericFlow = new GenericOAuth2Router(basePath, authMethodId);
     this.basePath = basePath;
@@ -26,7 +22,6 @@ function LocalIdP(basePath, authMethodId, authMethodConfig/*, csrfProtection*/) 
     this.authorizeWithUi = (req, res, authRequest) => {
         // Do your thing...
         // Render a login mask...
-        // Or redirect to a 3rd party IdP, like Google
         renderLogin(req, res, null);
     };
 

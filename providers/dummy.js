@@ -80,7 +80,6 @@ function DummyIdP(basePath, authMethodId/*, csrfProtection*/) {
             title: req.app.glob.title,
             portalUrl: wicked.getExternalPortalUrl(),
             baseUrl: req.app.get('base_path'),
-            // csrfToken: req.csrfToken(),
             errorMessage: flashError,
             loginUrl: `${authMethodId}/login`
         });
