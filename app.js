@@ -129,44 +129,32 @@ app.initApp = function (authServerConfig, callback) {
             info(`Skipping disabled auth method ${authMethod.name}.`);
             continue;
         }
+        const options = {
+            externalUrlBase: app.get('external_url'),
+            basePath: app.get('base_path')
+        };
         info(`Activating auth method ${authMethod.name} with type ${authMethod.type}.`);
         switch (authMethod.type) {
             case "local":
-                app.use(authUri, new LocalIdP(basePath, authMethod.name, authMethod.config).getRouter());
-                //app.use(authUri, new LocalAuth(basePath, authMethod.name, csrfProtection));
+                app.use(authUri, new LocalIdP(basePath, authMethod.name, authMethod.config, options).getRouter());
                 break;
             case "dummy":
-                app.use(authUri, new DummyIdP(basePath, authMethod.name, authMethod.config).getRouter());
+                app.use(authUri, new DummyIdP(basePath, authMethod.name, authMethod.config, options).getRouter());
                 break;
-            // case "github":
-            //     app.use(authUri, new GithubIdP(basePath, authMethod.name, authMethod.config).getRouter());
-            //     break;
+            case "github":
+                app.use(authUri, new GithubIdP(basePath, authMethod.name, authMethod.config, options).getRouter());
+                break;
+            case "google":
+                app.use(authUri, new GoogleIdP(basePath, authMethod.name, authMethod.config, options).getRouter());
+                break;
+            case "twitter":
+                app.use(authUri, new TwitterIdP(basePath, authMethod.name, authMethod.config, options).getRouter());
+                break;
             default:
                 error('ERROR: Unknown authMethod type ' + authMethod.type);
                 break;
         }
     }
-    //app.use(basePath + '/local', new LocalAuth(basePath, 'local', csrfProtection));
-
-    // app.use(basePath + '/google', google);
-    // app.use(basePath + '/github', github);
-    // app.use(basePath + '/twitter', twitter);
-    // app.use(basePath + '/facebook', facebook);
-    // app.use(basePath + '/adfs', adfs);
-
-    // // CORS enable this end point
-    // app.get(basePath + '/profile', utils.cors(), function (req, res, next) {
-    //     debug(basePath + '/profile');
-    //     debug(req.session);
-
-    //     if (!req.session ||
-    //         !req.session.userValid ||
-    //         !req.session.passport ||
-    //         !req.session.passport.user)
-    //         return res.status(400).json({ message: 'You need a valid session to call ' + basePath + '/profile.' });
-
-    //     res.json(req.session.passport.user);
-    // });
 
     app.get(basePath + '/profile', utilsOAuth2.getProfile);
 

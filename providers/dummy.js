@@ -5,7 +5,7 @@ const wicked = require('wicked-sdk');
 
 const GenericOAuth2Router = require('../common/generic-router');
 
-function DummyIdP(basePath, authMethodId/*, csrfProtection*/) {
+function DummyIdP(basePath, authMethodId, authMethodConfig, options) {
 
     const genericFlow = new GenericOAuth2Router(basePath, authMethodId);
     this.basePath = basePath;

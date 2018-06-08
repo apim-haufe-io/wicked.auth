@@ -114,10 +114,10 @@ utils.splitName = function (fullName, username) {
     };
     if (!fullName) {
         if (username) {
-            name.lastName = username;
+            name.lastName = '';
             name.fullName = username;
         } else {
-            name.lastName = 'Unknown';
+            name.lastName = '';
             name.fullName = 'Unknown';
         }
     } else {
@@ -351,6 +351,7 @@ utils.createViewModel = (req, authMethodId) => {
         forgotPasswordUrl: `${authMethodId}/forgotpassword`,
         verifyEmailUrl: `${authMethodId}/verifyemail`,
         verifyPostUrl: `${authMethodId}/verify`,
+        emailMissingUrl: `${authMethodId}/emailmissing`,
         recaptcha: req.app.glob.recaptcha
     };
 };
@@ -576,6 +577,41 @@ utils.createVerifyEmailPostHandler = (authMethodId) => {
                 return failError(500, err, next);
             return res.render('verify_email_request_confirm', utils.createViewModel(req, authMethodId));
         });
+    };
+};
+
+utils.createEmailMissingHandler = (authMethodId) => {
+    debug(`createEmailMissingHandler(${authMethodId})`);
+    return (req, res, next) => {
+        debug(`emailMissingHandler(${authMethodId})`);
+
+        const viewModel = utils.createViewModel(req, authMethodId);
+        return res.render('email_missing', viewModel);
+    };
+};
+
+utils.createEmailMissingPostHandler = (authMethodId, continueAuthenticate) => {
+    debug(`createEmailMissingPostHandler(${authMethodId})`);
+    return (req, res, next) => {
+        debug(`emailMissingPostHandler(${authMethodId})`);
+
+        const body = req.body;
+        const expectedCsrfToken = utils.getAndDeleteCsrfToken(req);
+        const csrfToken = body._csrf;
+
+        if (expectedCsrfToken !== csrfToken)
+            return setTimeout(failMessage, ERROR_TIMEOUT, 403, 'CSRF validation failed.', next);
+
+        const email = body.email;
+        const email2 = body.email2;
+
+        if (!email || !email2)
+            return setTimeout(failMessage, ERROR_TIMEOUT, 400, 'Email address or confirmation not passed in.', next);
+        if (email !== email2)
+            return setTimeout(failMessage, ERROR_TIMEOUT, 400, 'Email address and confirmation of email address do not match', next);
+
+        // Pass back email address to calling IdP (e.g. Twitter)
+        return continueAuthenticate(req, res, next, email);
     };
 };
 

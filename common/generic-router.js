@@ -13,7 +13,7 @@ const utilsOAuth2 = require('./utils-oauth2');
 const { failMessage, failError, failOAuth, makeError } = require('./utils-fail');
 const profileStore = require('./profile-store');
 
-function GenericOAuth2Router(basePath, authMethodId/*, csrfProtection*/) {
+function GenericOAuth2Router(basePath, authMethodId) {
 
     const oauthRouter = new Router();
     const state = {};
@@ -27,13 +27,40 @@ function GenericOAuth2Router(basePath, authMethodId/*, csrfProtection*/) {
         state.idp = idp;
         // Configure additional end points (if applicable). JavaScript is sick.
         const endpoints = idp.endpoints();
+        const standardEndpoints = [
+            {
+                method: 'get',
+                uri: '/verify/:verificationId',
+                handler: utils.createVerifyHandler(authMethodId)
+            },
+            {
+                method: 'post',
+                uri: '/verify',
+                handler: utils.createVerifyPostHandler(authMethodId)
+            },
+            {
+                method: 'get',
+                uri: '/verifyemail',
+                handler: utils.createVerifyEmailHandler(authMethodId)
+            },
+            {
+                method: 'post',
+                uri: '/verifyemail',
+                handler: utils.createVerifyEmailPostHandler(authMethodId)
+            },
+        ];
+        // Spread operator, fwiw.
+        endpoints.push(...standardEndpoints);
         for (let i = 0; i < endpoints.length; ++i) {
             const e = endpoints[i];
             if (!e.uri)
                 throw new Error('initIdP: Invalid end point definition, "uri" is null): ' + JSON.stringify(e));
             if (!e.handler)
                 throw new Error('initIdP: Invalid end point definition, "handler" is null): ' + JSON.stringify(e));
-            oauthRouter[e.method](e.uri, e.handler);
+            if (e.middleware)
+                oauthRouter[e.method](e.uri, e.middleware, e.handler);
+            else
+                oauthRouter[e.method](e.uri, e.handler);
         }
     };
 
@@ -228,7 +255,7 @@ function GenericOAuth2Router(basePath, authMethodId/*, csrfProtection*/) {
                 // not possible here, as there is no API to check with. We'll just continue with
                 // redirecting to the redirect_uri in the authRequest (see GET /login).
                 req.session[authMethodId].authResponse = authResponse;
-                
+
                 debug(`continueAuthorizeFlow(${authMethodId}): Doing plain login/redirecting: ${authRequest.redirect_uri}`);
                 return res.redirect(authRequest.redirect_uri);
             }
@@ -312,7 +339,7 @@ function GenericOAuth2Router(basePath, authMethodId/*, csrfProtection*/) {
                     return tokenRefreshToken(tokenRequest, handleTokenResult);
             }
             // This should not be possible
-            return failOAuth(400, 'unsupported_grant_type', `invalid grant type ${tokenRequest.grant_type}`);
+            return failOAuth(400, 'unsupported_grant_type', `invalid grant type ${tokenRequest.grant_type}`, next);
         });
     });
 
@@ -364,6 +391,8 @@ function GenericOAuth2Router(basePath, authMethodId/*, csrfProtection*/) {
                 utilsOAuth2.makeOidcProfile(poolId, authResponse, regInfo, (err, profile) => {
                     if (err)
                         return utils.failError(500, err, next);
+                    // This will override the default user profile which is already
+                    // present, but that is fine.
                     authResponse.profile = profile;
                     return authorizeFlow(req, res, next);
                 });
@@ -492,33 +521,27 @@ function GenericOAuth2Router(basePath, authMethodId/*, csrfProtection*/) {
         // match the stored profile in the wicked database. Plus that we might need to
         // create a federated user record in case we have a good valid 3rd party user,
         // which we want to track in the user database of wicked.
-        function loadUserAndProfile(userId) {
-            debug(`loadUserAndProfile(${userId})`);
+        function loadWickedUser(userId) {
+            debug(`loadWickedUser(${userId})`);
             wicked.apiGet(`/users/${userId}`, (err, userInfo) => {
                 if (err)
                     return callback(err);
                 debug('loadUserAndProfile returned.');
 
-                // TODO: This is not good, and will not work like this
-                // ATTENTION: This ought just fill userId and customId.
+                // This just fills userId.
                 // The rest is done when handling the registrations (see
                 // registrationFlow()).
                 const oidcProfile = utilsOAuth2.wickedUserInfoToOidcProfileSync(userInfo);
+                authResponse.userId = userId;
                 authResponse.profile = oidcProfile;
 
                 return callback(null, authResponse);
-                // utilsOAuth2.wickedUserInfoToOidcProfile(userInfo, (err, oidcProfile) => {
-                //     if (err)
-                //         return callback(err);
-                //     authResponse.profile = oidcProfile;
-                //     return callback(null, authResponse);
-                // });
             });
         }
 
         if (authResponse.userId) {
             // We already have a wicked user id, load the user and fill the profile
-            return loadUserAndProfile(authResponse.userId);
+            return loadWickedUser(authResponse.userId);
         } else if (authResponse.customId) {
             // Let's check the custom ID, load by custom ID
             existsUserWithCustomId(authResponse.customId, (err, shortInfo) => {
@@ -529,10 +552,10 @@ function GenericOAuth2Router(basePath, authMethodId/*, csrfProtection*/) {
                     createUserFromDefaultProfile(authResponse, (err, authResponse) => {
                         if (err)
                             return callback(err);
-                        return loadUserAndProfile(authResponse.userId);
+                        return loadWickedUser(authResponse.userId);
                     });
                 } else {
-                    return loadUserAndProfile(shortInfo.id);
+                    return loadWickedUser(shortInfo.id);
                 }
             });
         } else {
@@ -559,14 +582,25 @@ function GenericOAuth2Router(basePath, authMethodId/*, csrfProtection*/) {
                 return callback(err);
             }
             debug(`createUserFromDefaultProfile: Created new user with id ${userInfo.id}`);
-            // Hmmmmmm
-            utilsOAuth2.wickedUserInfoToOidcProfile(userInfo, (err, oidcProfile) => {
-                if (err)
-                    return callback(err);
-                authResponse.userId = userInfo.id;
-                //authResponse.profile = oidcProfile;
-                return callback(null, authResponse);
-            });
+            authResponse.userId = userInfo.id;
+
+            // Check whether we need to create a verification request, in case the email
+            // address is not yet verified by the federated IdP (can happen with Twitter).
+            // That we do asynchronously and return immediately without waiting for that.
+            if (!userCreateInfo.validated) {
+                info(`Creating email verification request for email ${userCreateInfo.email}...`);
+                utils.createVerificationRequest(false, authMethodId, userCreateInfo.email, (err) => {
+                    if (err) {
+                        error(`Creating email verification request for email ${userCreateInfo.email} failed`);
+                        error(err);
+                        return;
+                    }
+                    info(`Created email verification request for email ${userCreateInfo.email} successfully`);
+                    return;
+                });
+            }
+
+            return callback(null, authResponse);
         });
     }
 

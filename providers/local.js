@@ -8,12 +8,9 @@ const utils = require('../common/utils');
 const { failMessage, failError, failOAuth, makeError } = require('../common/utils-fail');
 const GenericOAuth2Router = require('../common/generic-router');
 
-function LocalIdP(basePath, authMethodId, authMethodConfig) {
+function LocalIdP(basePath, authMethodId, authMethodConfig, options) {
 
     const genericFlow = new GenericOAuth2Router(basePath, authMethodId);
-    this.basePath = basePath;
-    this.authMethodId = authMethodId;
-    this.config = authMethodConfig;
 
     this.getRouter = () => {
         return genericFlow.getRouter();
@@ -41,26 +38,6 @@ function LocalIdP(basePath, authMethodId, authMethodConfig) {
                 method: 'post',
                 uri: '/signup',
                 handler: this.signupPostHandler
-            },
-            {
-                method: 'get',
-                uri: '/verify/:verificationId',
-                handler: utils.createVerifyHandler(authMethodId)
-            },
-            {
-                method: 'post',
-                uri: '/verify',
-                handler: utils.createVerifyPostHandler(authMethodId)
-            },
-            {
-                method: 'get',
-                uri: '/verifyemail',
-                handler: utils.createVerifyEmailHandler(authMethodId)
-            },
-            {
-                method: 'post',
-                uri: '/verifyemail',
-                handler: utils.createVerifyEmailPostHandler(authMethodId)
             },
             {
                 method: 'get',

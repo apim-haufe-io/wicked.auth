@@ -12,12 +12,9 @@ const GenericOAuth2Router = require('../common/generic-router');
  * This is a sample of how an IdP must work to be able to integrate into
  * the generic OAuth2 workflow in generic.js
  */
-function IdP(basePath, authMethodId, authMethodConfig) {
+function IdP(basePath, authMethodId, authMethodConfig, options) {
 
     const genericFlow = new GenericOAuth2Router(basePath, authMethodId);
-    this.basePath = basePath;
-    this.authMethodId = authMethodId;
-    this.config = authMethodConfig;
 
     this.getRouter = () => {
         return genericFlow.getRouter();

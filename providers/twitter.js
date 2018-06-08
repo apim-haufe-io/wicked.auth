@@ -1,112 +1,232 @@
 'use strict';
 
-const { debug, info, warn, error } = require('portal-env').Logger('auth-passport:twitter');
-const passport = require('passport');
-const request = require('request');
-const TwitterStrategy = require('passport-twitter');
+const { debug, info, warn, error } = require('portal-env').Logger('portal-auth:twitter');
+const Router = require('express').Router;
 
 const utils = require('../common/utils');
+const { failMessage, failError, failOAuth, makeError } = require('../common/utils-fail');
 
-const twitter = require('express').Router();
+const GenericOAuth2Router = require('../common/generic-router');
 
-twitter.authenticateSettings = {
-    failureRedirect: '/auth-server/failure'
-};
+const request = require('request');
+const passport = require('passport');
+const Twitter = require('twitter');
 
-twitter.init = function (app, authConfig) {
-    debug('init()');
-    twitter.authServerName = app.get('server_name');
-    twitter.basePath = app.get('base_path');
-    if (!authConfig.twitter) {
-        debug('Not configuring twitter authentication.');
-        return;
-    }
+const TwitterStrategy = require('passport-twitter');
 
-    twitter.authenticateSettings.failureRedirect = twitter.basePath + '/failure';
+/**
+ * Twitter IdP implementation.
+ */
+function TwitterIdP(basePath, authMethodId, authMethodConfig, options) {
 
-    if (!authConfig.twitter.consumerKey)
-        throw new Error('In auth-server configuration, property "twitter", the property "consumerKey" is missing.');
-    if (!authConfig.twitter.consumerSecret)
-        throw new Error('In auth-server configuration, property "twitter", the property "consumerSecret" is missing.');
-    if (!authConfig.twitter.callbackUrl)
-        throw new Error('In auth-server configuration, property "twitter", the property "callbackUrl" is missing.');
+    const genericFlow = new GenericOAuth2Router(basePath, authMethodId);
+    const instance = this;
 
-    passport.use(new TwitterStrategy({
-        consumerKey: authConfig.twitter.consumerKey,
-        consumerSecret: authConfig.twitter.consumerSecret,
-        callbackURL: authConfig.twitter.callbackUrl
-    }, function (accessToken, refreshToken, profile, done) {
+    // debug(authMethodConfig);
+    // Verify configuration
+    if (!authMethodConfig.consumerKey)
+        throw new Error(`Twitter auth method "${authMethodId}": In auth method configuration, property "config", the property "consumerKey" is missing.`);
+    if (!authMethodConfig.consumerSecret)
+        throw new Error(`Twitter auth method "${authMethodId}": In auth-server configuration, property "config", the property "consumerSecret" is missing.`);
+
+    // Assemble the callback URL
+    const callbackUrl = `${options.externalUrlBase}/${authMethodId}/callback`;
+    info(`Twitter Authentication: Expected callback URL: ${callbackUrl}`);
+
+    // ========================
+    // HELPER METHODS
+    // ========================
+
+    const verifyProfile = (token, tokenSecret, profile, done) => {
         debug('Twitter Authentication succeeded.');
-        normalizeProfile(profile, accessToken, function (err, userProfile) {
+        createAuthResponse(profile, token, tokenSecret, function (err, authResponse) {
             if (err) {
-                error('normalizeProfile failed.');
+                error('createAuthResponse failed.');
                 error(err);
-                error(err.stack);
                 return done(err);
             }
-            debug('Twitter normalized user profile:');
-            debug(userProfile);
-            done(null, userProfile);
+            debug('Twitter authResponse:');
+            debug(authResponse);
+            done(null, authResponse);
         });
-    }));
-
-    const authenticateWithTwitter = passport.authenticate('twitter');
-    const authenticateCallback = passport.authenticate('twitter', twitter.authenticateSettings);
-
-    twitter.get('/api/:apiId', utils.verifyClientAndAuthenticate('twitter', authenticateWithTwitter));
-    twitter.get('/callback', authenticateCallback, utils.authorizeAndRedirect('twitter', twitter.authServerName));
-
-    debug('Configured twitter authentication.');
-};
-
-function normalizeProfile(profile, accessToken, callback) {
-    debug('normalizeProfile()');
-
-    const nameGuess = utils.splitName(profile.displayName, profile.username);
-    const email = null; // We don't get email addresses from Twitter as a default
-    const email_verified = false;
-
-    const userProfile = {
-        id: 'twitter:' + profile.id,
-        sub: 'twitter:' + profile.id,
-        username: utils.makeUsername(nameGuess.fullName, profile.username),
-        preferred_username: utils.makeUsername(nameGuess.fullName, profile.username),
-        name: nameGuess.fullName,
-        given_name: nameGuess.firstName,
-        family_name: nameGuess.lastName,
-        email: email,
-        email_verified: email_verified,
-        raw_profile: profile
     };
 
-    /*
-    // This requires special permissions to get email addresses; otherwise you just
-    // get a strange error message back, after ten to twenty seconds.
-    request.get({
-        url: 'https://api.twitter.com/1.1/account/verify_credentials.json?include_email=true',
-        headers: {
-            'Accept': 'application/json',
-            'Authorization': 'Bearer ' + accessToken
-        }, function (err, res, body) {
+
+    const createAuthResponse = (profile, token, tokenSecret, callback) => {
+        debug('normalizeProfile()');
+
+        const nameGuess = utils.splitName(profile.displayName, profile.username);
+        const email = null; // We don't get email addresses from Twitter as a default
+        const email_verified = false;
+
+        const customId = `${authMethodId}:${profile.id}`;
+        debug(`Twitter token: ${token}`);
+        debug(`Twitter tokenSecret: ${tokenSecret}`);
+        //debug('Twitter raw profile:');
+        //debug(profile);
+
+        const defaultProfile = {
+            username: utils.makeUsername(nameGuess.fullName, profile.username),
+            preferred_username: utils.makeUsername(nameGuess.fullName, profile.username),
+            name: nameGuess.fullName,
+            given_name: nameGuess.firstName,
+            family_name: nameGuess.lastName,
+            email: email,
+            email_verified: email_verified
+        };
+
+        // To read the email address, we need the twitter client. Twitter requires
+        // signing all requests, and thus it's easier to use a library for that rather
+        // than trying to roll our own signing...
+        const twitterClient = new Twitter({
+            consumer_key: authMethodConfig.consumerKey,
+            consumer_secret: authMethodConfig.consumerSecret,
+            access_token_key: token,
+            access_token_secret: tokenSecret
+        });
+
+        // See https://developer.twitter.com/en/docs/accounts-and-users/manage-account-settings/api-reference/get-account-verify_credentials
+        const twitterParams = { include_email: false };
+        debug('Attempting to verify Twitter credentials...');
+        twitterClient.get('account/verify_credentials', twitterParams, (err, extendedProfile, response) => {
             if (err)
                 return callback(err);
-            const jsonBody = utils.getJson(body);
+            debug('Successfully verified Twitter credentials, here are the results:');
+            debug(extendedProfile);
 
-            // This is not tested, and might be wrong; the docs on this at Twitter are really
-            // bad:
+            const jsonBody = utils.getJson(extendedProfile);
+
             if (jsonBody.email) {
                 // If we have an email address, Twitter assures it's already verified.
-                userProfile.email = jsonBody.email;
-                userProfile.email_verified = true;
+                defaultProfile.email = jsonBody.email;
+                defaultProfile.email_verified = true;
             }
 
-            callback(null, userProfile);
-        }
-    });
-    */
+            const authResponse = {
+                userId: null,
+                customId: customId,
+                defaultGroups: [],
+                defaultProfile: defaultProfile
+            };
+            debug('Twitter authResponse:');
+            debug(authResponse);
 
-    // In case the above code is commented _in_, this has to be commented _out_:
-    callback(null, userProfile);
+            callback(null, authResponse);
+        });
+    };
+
+    // ========================
+    // PASSPORT INITIALIZATION
+    // ========================
+
+    // Use the authMethodId as passport "name"; which is subsequently used below
+    // to identify the strategy to use for a specific end point (see passport.authenticate)
+
+    const authenticateSettings = {
+        session: false,
+        failureRedirect: '/auth-server/failure'
+    };
+
+    passport.use(new TwitterStrategy({
+        consumerKey: authMethodConfig.consumerKey,
+        consumerSecret: authMethodConfig.consumerSecret,
+        callbackURL: callbackUrl
+    }, verifyProfile));
+
+    const authenticateWithTwitter = passport.authenticate(authMethodId, authenticateSettings);
+    const authenticateCallback = passport.authenticate(authMethodId, authenticateSettings);
+
+    const emailMissingHandler = utils.createEmailMissingHandler(authMethodId);
+
+    /**
+     * Twitter callback handler; this is the endpoint which is called when Twitter
+     * returns with a success or failure response.
+     */
+    instance.callbackHandler = (req, res, next) => {
+        // Here we want to assemble the default profile and stuff.
+        debug('callbackHandler()');
+        // The authResponse is now in req.user (for this call), and we can pass that on as an authResponse
+        // to continueAuthorizeFlow. Note the usage of "session: false", so that this data is NOT stored
+        // automatically in the user session, which passport usually does by default.
+        const authResponse = req.user;
+
+        // Now we have to check whether we received an email adress from Twitter; if not, we need to ask
+        // the user for one.
+        if (authResponse.defaultProfile &&
+            authResponse.defaultProfile.email) {
+            // Yes, all is good, we can go back to the generic router
+            return genericFlow.continueAuthorizeFlow(req, res, next, authResponse);
+        }
+
+        // No email from Twitter, let's ask for one, but we must store the temporary authResponse for later
+        // usage, in the session.
+        req.session[authMethodId].tmpAuthResponse = authResponse;
+
+        return emailMissingHandler(req, res, next);
+    };
+
+    // We will be called back (hopefully) on this end point via the emailMissingPostHandler (in utils.js)
+    const continueAuthenticate = (req, res, next, email) => {
+        debug(`continueAuthenticate(${authMethodId})`);
+
+        const session = req.session[authMethodId];
+
+        if (!session ||
+            !session.tmpAuthResponse) {
+            return failMessage(500, 'Invalid state: Was expecting a temporary auth response.', next);
+        }
+        const authResponse = session.tmpAuthResponse;
+        delete session.tmpAuthResponse;
+
+        authResponse.defaultProfile.email = email;
+        authResponse.defaultProfile.email_verified = false;
+
+        return genericFlow.continueAuthorizeFlow(req, res, next, authResponse);
+    };
+
+    instance.getRouter = () => {
+        return genericFlow.getRouter();
+    };
+
+    instance.authorizeWithUi = (req, res, authRequest) => {
+        // Do your thing...
+        // Redirect to the Twitter login page
+        return authenticateWithTwitter(req, res);
+    };
+
+    instance.endpoints = () => {
+        return [
+            {
+                method: 'get',
+                uri: '/callback',
+                middleware: authenticateCallback,
+                handler: instance.callbackHandler
+            },
+            {
+                method: 'post',
+                uri: '/emailmissing',
+                handler: utils.createEmailMissingPostHandler(authMethodId, continueAuthenticate)
+            }
+        ];
+    };
+
+    instance.authorizeByUserPass = (user, pass, callback) => {
+        // Verify username and password, if possible.
+        // For Twitter, this is not possible, so we will just return an
+        // error message.
+        return failOAuth(400, 'unsupported_grant_type', 'Twitter does not support authorizing headless with username and password', callback);
+    };
+
+    instance.checkRefreshToken = (tokenInfo, callback) => {
+        // Decide whether it's okay to refresh this token or not, e.g.
+        // by checking that the user is still valid in your database or such;
+        // for 3rd party IdPs, this may be tricky. For Twitter, we will just allow it.
+        return callback(null, {
+            allowRefresh: true
+        });
+    };
+
+    genericFlow.initIdP(instance);
 }
 
-module.exports = twitter;
+module.exports = TwitterIdP;

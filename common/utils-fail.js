@@ -22,14 +22,14 @@ failUtils.failMessage = function (statusCode, message, callback) {
 //   "error": "some oauth2 error",
 //   "error_description": "nice description"   
 // }
-failUtils.failOAuth = function (statusCode, error, message, internalError, callback) {
+failUtils.failOAuth = function (statusCode, oauthError, message, internalErrorOrCallback, callback) {
     const err = new Error(message);
-    err.oauthError = error;
+    err.oauthError = oauthError;
     err.status = statusCode;
-    if (typeof(internalError) === 'function')
-        callback = internalError;
+    if (typeof(internalErrorOrCallback) === 'function')
+        callback = internalErrorOrCallback;
     else
-        err.internalError = internalError;
+        err.internalError = internalErrorOrCallback;
     return callback(err);
 };
 

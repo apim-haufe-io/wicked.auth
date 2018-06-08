@@ -1,0 +1,58 @@
+extends auth_layout
+
+block scripts
+    script(type='text/javascript').
+        function validateEmail() {
+            var email = $('#email').val();
+            var email2 = $('#email2').val();
+            var emailError = '';
+            var email2Error = '';
+            if (!email)
+                emailError = 'Please enter a value for the email address. ';
+            else if (!/.+@.+/.test(email))
+                emailError = 'Email address invalid. ';
+            if (!email2)
+                email2Error = 'Please confirm your email address.';
+
+            try {
+                $('#errorEmail').text(emailError);
+                $('#errorEmail2').text(email2Error);
+            } catch (err) {
+                alert('Validation errored! Check your input values.');
+                return false;
+            }
+            
+            var somethingBad = !!emailError
+                || !!email2Error;
+            
+            return !somethingBad;
+        }
+
+block content
+    h2 Specify Email Address
+    
+        p.
+            Using the API requires you to specify a valid email address, but your chosen identity provider
+            does not provide one. The address <b>cannot be changed</b> after specifying it.
+
+        h4.
+            By having signed up and registering, you agree to our <a target='_blank' href='#{portalUrl}content/terms-and-conditions'>Terms
+            and Conditions</a> and the <a target='_blank' href='#{portalUrl}content/privacy-policy'>Privacy/Cookie Policy</a>.
+        
+        form(role='form' action='#{baseUrl}/#{emailMissingUrl}' method='post' onsubmit='return validateEmail();')
+            input(type='hidden' name='_csrf' value='#{csrfToken}')
+
+            .form-group
+                label(for='email') Email address:
+                input(type='string' name='email' id='email').form-control
+                small 
+                    span(id='errorEmail' style='color:red')
+            .form-group
+                label(for='email') Email address (confirm):
+                input(type='string' name='email2' id='email2').form-control
+                small 
+                    span(id='errorEmail2' style='color:red')
+                        
+            button(class='btn btn-lg btn-primary btn-block' type='submit') 
+                span(aria-hidden="true").glyphicon.glyphicon-envelope
+                | &nbsp; Save Email Address
