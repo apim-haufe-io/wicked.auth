@@ -475,6 +475,34 @@ utils.createForgotPasswordHandler = (authMethodId) => {
     };
 };
 
+/**
+ * Checks for a user by custom ID.
+ * 
+ * @param {*} customId custom ID to check a user for; if there is a user
+ * with this custom ID in the wicked database, the user will already have
+ * an email address, and thus the IdP would not have to ask for one, in
+ * case it doesn't provide one (e.g. Twitter).
+ * @param {*} callback Returns (err, shortUserInfo), shortUserInfo may be
+ * null in case the user doesn't exist, otherwise { id, customId, name, email }
+ */
+utils.getUserByCustomId = (customId, callback) => {
+    debug(`getUserByCustomId(${customId})`);
+    wicked.apiGet(`/users?customId=${qs.escape(customId)}`, (err, shortInfoList) => {
+        if (err && err.statusCode == 404) {
+            // Not found
+            return callback(null, null);
+        } else if (err) {
+            // Unexpected error
+            return callback(err);
+        }
+
+        // Now we should have the user ID here:
+        if (!Array.isArray(shortInfoList) || shortInfoList.length <= 0 || !shortInfoList[0].id)
+            return callback(new Error('getUserByCustomId: Get user short info by email did not return a user id'));
+        return callback(null, shortInfoList[0]);
+    });
+};
+
 utils.createForgotPasswordPostHandler = (authMethodId) => {
     debug(`createForgotPasswordPostHandler(${authMethodId})`);
     return (req, res, next) => {
@@ -580,13 +608,21 @@ utils.createVerifyEmailPostHandler = (authMethodId) => {
     };
 };
 
-utils.createEmailMissingHandler = (authMethodId) => {
+utils.createEmailMissingHandler = (authMethodId, continueAuthenticate) => {
     debug(`createEmailMissingHandler(${authMethodId})`);
-    return (req, res, next) => {
+    return (req, res, next, customId) => {
         debug(`emailMissingHandler(${authMethodId})`);
 
-        const viewModel = utils.createViewModel(req, authMethodId);
-        return res.render('email_missing', viewModel);
+        utils.getUserByCustomId(customId, (err, userInfo) => {
+            if (err)
+                return failError(500, err, next);
+            // Known user, and known email address?
+            if (userInfo && userInfo.email)
+                return continueAuthenticate(req, res, next, userInfo.email);
+            // Unknown user, ask for email please            
+            const viewModel = utils.createViewModel(req, authMethodId);
+            return res.render('email_missing', viewModel);
+        });
     };
 };
 

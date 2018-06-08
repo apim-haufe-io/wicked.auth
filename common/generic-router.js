@@ -193,38 +193,10 @@ function GenericOAuth2Router(basePath, authMethodId) {
         return state.idp.authorizeWithUi(req, res, authRequest);
     });
 
-    /**
-     * Checks for a user by custom ID.
-     * 
-     * @param {*} customId custom ID to check a user for; if there is a user
-     * with this custom ID in the wicked database, the user will already have
-     * an email address, and thus the IdP would not have to ask for one, in
-     * case it doesn't provide one (e.g. Twitter).
-     * @param {*} callback Returns (err, shortUserInfo), shortUserInfo may be
-     * null in case the user doesn't exist, otherwise { id, customId, name, email }
-     */
-    this.existsUserWithCustomId = existsUserWithCustomId;
-    function existsUserWithCustomId(customId, callback) {
-        debug(`existsUserWithCustomId(${customId})`);
-        wicked.apiGet(`/users?customId=${qs.escape(customId)}`, (err, shortInfoList) => {
-            if (err && err.statusCode == 404) {
-                // Not found
-                return callback(null, null);
-            } else if (err) {
-                // Unexpected error
-                return callback(err);
-            }
-
-            // Now we should have the user ID here:
-            if (!Array.isArray(shortInfoList) || shortInfoList.length <= 0 || !shortInfoList[0].id)
-                return callback(new Error('existsUserWithCustomId: Get user short info by email did not return a user id'));
-            return callback(null, shortInfoList[0]);
-        });
-    }
-
     this.continueAuthorizeFlow = (req, res, next, authResponse) => {
         debug('continueAuthorizeFlow()');
-        // TODO:
+        // This is what happens here:
+        //
         // 1. Check if user already exists if only customId is filled
         // 2. (If not) Possibly create user in local database  
         //     --> Note that if the local IdP does not want this, it
@@ -233,8 +205,7 @@ function GenericOAuth2Router(basePath, authMethodId) {
         // 3. Check registration status
         // 4. If not registered, and registration is needed, display 
         //    registration form (for the API's registration pool)
-        // 5. (Email validation doohickey)
-
+        // 5. Check granted scopes, if not a trusted application is calling
         // 6. Call authorizeFlow
 
         // Extra TODO:
@@ -544,7 +515,7 @@ function GenericOAuth2Router(basePath, authMethodId) {
             return loadWickedUser(authResponse.userId);
         } else if (authResponse.customId) {
             // Let's check the custom ID, load by custom ID
-            existsUserWithCustomId(authResponse.customId, (err, shortInfo) => {
+            utils.getUserByCustomId(authResponse.customId, (err, shortInfo) => {
                 if (err)
                     return callback(err);
                 if (!shortInfo) {

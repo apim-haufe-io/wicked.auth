@@ -86,7 +86,7 @@ function TwitterIdP(basePath, authMethodId, authMethodConfig, options) {
         });
 
         // See https://developer.twitter.com/en/docs/accounts-and-users/manage-account-settings/api-reference/get-account-verify_credentials
-        const twitterParams = { include_email: false };
+        const twitterParams = { include_email: true };
         debug('Attempting to verify Twitter credentials...');
         twitterClient.get('account/verify_credentials', twitterParams, (err, extendedProfile, response) => {
             if (err)
@@ -136,7 +136,29 @@ function TwitterIdP(basePath, authMethodId, authMethodConfig, options) {
     const authenticateWithTwitter = passport.authenticate(authMethodId, authenticateSettings);
     const authenticateCallback = passport.authenticate(authMethodId, authenticateSettings);
 
-    const emailMissingHandler = utils.createEmailMissingHandler(authMethodId);
+    // We will be called back (hopefully) on this end point via the emailMissingPostHandler (in utils.js)
+    const continueAuthenticate = (req, res, next, email) => {
+        debug(`continueAuthenticate(${authMethodId})`);
+
+        const session = req.session[authMethodId];
+
+        if (!session ||
+            !session.tmpAuthResponse) {
+            return failMessage(500, 'Invalid state: Was expecting a temporary auth response.', next);
+        }
+        const authResponse = session.tmpAuthResponse;
+        delete session.tmpAuthResponse;
+
+        authResponse.defaultProfile.email = email;
+        authResponse.defaultProfile.email_verified = false;
+
+        return genericFlow.continueAuthorizeFlow(req, res, next, authResponse);
+    };
+
+    // The email missing handler will be called if we do not get an email address back from
+    // Twitter, which may happen. It may be that we still already have the email address, in case
+    // the user already exists. This is checked in the createEmailMissingHandler.
+    const emailMissingHandler = utils.createEmailMissingHandler(authMethodId, continueAuthenticate);
 
     /**
      * Twitter callback handler; this is the endpoint which is called when Twitter
@@ -159,29 +181,11 @@ function TwitterIdP(basePath, authMethodId, authMethodConfig, options) {
         }
 
         // No email from Twitter, let's ask for one, but we must store the temporary authResponse for later
-        // usage, in the session.
+        // usage, in the session. It may be that emailMissingHandler is able to retrieve the email address
+        // from wicked, if the user is already registered. Otherwise the user will be asked.
         req.session[authMethodId].tmpAuthResponse = authResponse;
 
-        return emailMissingHandler(req, res, next);
-    };
-
-    // We will be called back (hopefully) on this end point via the emailMissingPostHandler (in utils.js)
-    const continueAuthenticate = (req, res, next, email) => {
-        debug(`continueAuthenticate(${authMethodId})`);
-
-        const session = req.session[authMethodId];
-
-        if (!session ||
-            !session.tmpAuthResponse) {
-            return failMessage(500, 'Invalid state: Was expecting a temporary auth response.', next);
-        }
-        const authResponse = session.tmpAuthResponse;
-        delete session.tmpAuthResponse;
-
-        authResponse.defaultProfile.email = email;
-        authResponse.defaultProfile.email_verified = false;
-
-        return genericFlow.continueAuthorizeFlow(req, res, next, authResponse);
+        return emailMissingHandler(req, res, next, authResponse.customId);
     };
 
     instance.getRouter = () => {
