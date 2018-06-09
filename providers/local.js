@@ -11,6 +11,7 @@ const GenericOAuth2Router = require('../common/generic-router');
 function LocalIdP(basePath, authMethodId, authMethodConfig, options) {
 
     const genericFlow = new GenericOAuth2Router(basePath, authMethodId);
+    const instance = this;
 
     this.getRouter = () => {
         return genericFlow.getRouter();
@@ -27,27 +28,27 @@ function LocalIdP(basePath, authMethodId, authMethodConfig, options) {
             {
                 method: 'post',
                 uri: '/login',
-                handler: this.loginHandler
+                handler: instance.loginHandler
             },
             {
                 method: 'get',
                 uri: '/signup',
-                handler: this.signupHandler
+                handler: instance.signupHandler
             },
             {
                 method: 'post',
                 uri: '/signup',
-                handler: this.signupPostHandler
+                handler: instance.signupPostHandler
             },
             {
                 method: 'get',
                 uri: '/forgotpassword',
-                handler: utils.createForgotPasswordHandler(authMethodId)
+                handler: genericFlow.createForgotPasswordHandler(authMethodId)
             },
             {
                 method: 'post',
                 uri: '/forgotpassword',
-                handler: utils.createForgotPasswordPostHandler(authMethodId)
+                handler: genericFlow.createForgotPasswordPostHandler(authMethodId)
             }
         ];
     };
@@ -59,6 +60,12 @@ function LocalIdP(basePath, authMethodId, authMethodConfig, options) {
         // or checking a callback from a 3rd party IdP), you must use the registered
         // generic flow implementation object (genericFlow from the constructor) to
         // pass back the same type of structure as in the authorizeByUserPass below.
+        const body = req.body;
+        const csrfToken = body._csrf;
+        const expectedCsrfToken = utils.getAndDeleteCsrfToken(req);
+
+        if (!csrfToken || csrfToken !== expectedCsrfToken)
+            return renderLogin(req, res, 'Suspected login forging detected (CSRF protection).');
 
         const username = req.body.username;
         const password = req.body.password;
@@ -84,9 +91,16 @@ function LocalIdP(basePath, authMethodId, authMethodConfig, options) {
         debug(`POST ${authMethodId}/signup`);
         debug('signupPostHandler()');
 
-        const email = req.body.email;
-        const password = req.body.password;
-        const password2 = req.body.password2;
+        const body = req.body;
+        const csrfToken = body._csrf;
+        const expectedCsrfToken = utils.getAndDeleteCsrfToken(req);
+
+        if (!csrfToken || expectedCsrfToken !== csrfToken)
+            return setTimeout(renderSignup, 500, req, res, 'CSRF validation failed, please try again.');
+
+        const email = body.email;
+        const password = body.password;
+        const password2 = body.password2;
 
         if (!password)
             return failMessage(400, 'Password cannot be empty', next);
@@ -152,12 +166,15 @@ function LocalIdP(basePath, authMethodId, authMethodConfig, options) {
     function renderLogin(req, res, flashError) {
         debug('renderLogin()');
         const viewModel = utils.createViewModel(req, authMethodId);
+        viewModel.errorMessage = flashError;
         res.render('login', viewModel);
     }
 
-    function renderSignup(req, res) {
+    function renderSignup(req, res, flashMessage) {
         debug('renderSignup()');
-        res.render('signup', utils.createViewModel(req, authMethodId));
+        const viewModel = utils.createViewModel(req, authMethodId);
+        viewModel.errorMessage = flashMessage;
+        res.render('signup', viewModel);
     }
 
     function loginUser(username, password, callback) {

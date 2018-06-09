@@ -16,6 +16,8 @@ function IdP(basePath, authMethodId, authMethodConfig, options) {
 
     const genericFlow = new GenericOAuth2Router(basePath, authMethodId);
 
+    const instance = this;
+
     this.getRouter = () => {
         return genericFlow.getRouter();
     };
@@ -53,7 +55,7 @@ function IdP(basePath, authMethodId, authMethodConfig, options) {
             {
                 method: 'post',
                 uri: '/login',
-                handler: this.loginHandler
+                handler: instance.loginHandler
             }
         ];
     };

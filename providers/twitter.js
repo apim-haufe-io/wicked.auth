@@ -158,13 +158,13 @@ function TwitterIdP(basePath, authMethodId, authMethodConfig, options) {
     // The email missing handler will be called if we do not get an email address back from
     // Twitter, which may happen. It may be that we still already have the email address, in case
     // the user already exists. This is checked in the createEmailMissingHandler.
-    const emailMissingHandler = utils.createEmailMissingHandler(authMethodId, continueAuthenticate);
+    const emailMissingHandler = genericFlow.createEmailMissingHandler(authMethodId, continueAuthenticate);
 
     /**
      * Twitter callback handler; this is the endpoint which is called when Twitter
      * returns with a success or failure response.
      */
-    instance.callbackHandler = (req, res, next) => {
+    this.callbackHandler = (req, res, next) => {
         // Here we want to assemble the default profile and stuff.
         debug('callbackHandler()');
         // The authResponse is now in req.user (for this call), and we can pass that on as an authResponse
@@ -188,17 +188,17 @@ function TwitterIdP(basePath, authMethodId, authMethodConfig, options) {
         return emailMissingHandler(req, res, next, authResponse.customId);
     };
 
-    instance.getRouter = () => {
+    this.getRouter = () => {
         return genericFlow.getRouter();
     };
 
-    instance.authorizeWithUi = (req, res, authRequest) => {
+    this.authorizeWithUi = (req, res, authRequest) => {
         // Do your thing...
         // Redirect to the Twitter login page
         return authenticateWithTwitter(req, res);
     };
 
-    instance.endpoints = () => {
+    this.endpoints = () => {
         return [
             {
                 method: 'get',
@@ -209,19 +209,19 @@ function TwitterIdP(basePath, authMethodId, authMethodConfig, options) {
             {
                 method: 'post',
                 uri: '/emailmissing',
-                handler: utils.createEmailMissingPostHandler(authMethodId, continueAuthenticate)
+                handler: genericFlow.createEmailMissingPostHandler(authMethodId, continueAuthenticate)
             }
         ];
     };
 
-    instance.authorizeByUserPass = (user, pass, callback) => {
+    this.authorizeByUserPass = (user, pass, callback) => {
         // Verify username and password, if possible.
         // For Twitter, this is not possible, so we will just return an
         // error message.
         return failOAuth(400, 'unsupported_grant_type', 'Twitter does not support authorizing headless with username and password', callback);
     };
 
-    instance.checkRefreshToken = (tokenInfo, callback) => {
+    this.checkRefreshToken = (tokenInfo, callback) => {
         // Decide whether it's okay to refresh this token or not, e.g.
         // by checking that the user is still valid in your database or such;
         // for 3rd party IdPs, this may be tricky. For Twitter, we will just allow it.
@@ -230,7 +230,7 @@ function TwitterIdP(basePath, authMethodId, authMethodConfig, options) {
         });
     };
 
-    genericFlow.initIdP(instance);
+    genericFlow.initIdP(this);
 }
 
 module.exports = TwitterIdP;

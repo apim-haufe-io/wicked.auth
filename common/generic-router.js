@@ -13,6 +13,8 @@ const utilsOAuth2 = require('./utils-oauth2');
 const { failMessage, failError, failOAuth, makeError } = require('./utils-fail');
 const profileStore = require('./profile-store');
 
+const ERROR_TIMEOUT = 500; // ms
+
 function GenericOAuth2Router(basePath, authMethodId) {
 
     const oauthRouter = new Router();
@@ -31,22 +33,22 @@ function GenericOAuth2Router(basePath, authMethodId) {
             {
                 method: 'get',
                 uri: '/verify/:verificationId',
-                handler: utils.createVerifyHandler(authMethodId)
+                handler: instance.createVerifyHandler(authMethodId)
             },
             {
                 method: 'post',
                 uri: '/verify',
-                handler: utils.createVerifyPostHandler(authMethodId)
+                handler: instance.createVerifyPostHandler(authMethodId)
             },
             {
                 method: 'get',
                 uri: '/verifyemail',
-                handler: utils.createVerifyEmailHandler(authMethodId)
+                handler: instance.createVerifyEmailHandler(authMethodId)
             },
             {
                 method: 'post',
                 uri: '/verifyemail',
-                handler: utils.createVerifyEmailPostHandler(authMethodId)
+                handler: instance.createVerifyEmailPostHandler(authMethodId)
             },
         ];
         // Spread operator, fwiw.
@@ -64,6 +66,266 @@ function GenericOAuth2Router(basePath, authMethodId) {
         }
     };
 
+    this.createVerifyHandler = (authMethodId) => {
+        debug(`createVerifyEmailHandler(${authMethodId})`);
+        // GET /verify/:verificationId
+        return (req, res, next) => {
+            debug(`verifyEmailHandler(${authMethodId})`);
+            const verificationId = req.params.verificationId;
+    
+            wicked.apiGet(`/verifications/${verificationId}`, (err, verificationInfo) => {
+                if (err && (err.statusCode === 404 || err.status === 404))
+                    return setTimeout(failMessage, ERROR_TIMEOUT, 404, 'The given verification ID is not valid.', next);
+                if (err)
+                    return failError(500, err, next);
+                if (!verificationInfo)
+                    return setTimeout(failMessage, ERROR_TIMEOUT, 404, 'The given verification ID is not valid.', next);
+    
+                const viewModel = utils.createViewModel(req, authMethodId);
+                viewModel.email = verificationInfo.email;
+                viewModel.id = verificationId;
+    
+                switch (verificationInfo.type) {
+                    case "email":
+                        return res.render('verify_email', viewModel);
+    
+                    case "lostpassword":
+                        return res.render('verify_password_reset', viewModel);
+    
+                    default:
+                        return failMessage(500, `Unknown verification type ${verificationInfo.type}`, next);
+                }
+            });
+        };
+    };
+    
+    this.createVerifyPostHandler = (authMethodId) => {
+        debug(`createVerifyPostHandler(${authMethodId})`);
+        return (req, res, next) => {
+            debug(`verifyPostHandler(${authMethodId})`);
+    
+            const body = req.body;
+            const expectedCsrfToken = utils.getAndDeleteCsrfToken(req);
+            const csrfToken = body._csrf;
+            const verificationId = body.verification_id;
+            const verificationType = body.type;
+    
+            if (!csrfToken || expectedCsrfToken !== csrfToken)
+                return setTimeout(failMessage, ERROR_TIMEOUT, 403, 'CSRF validation failed.', next);
+    
+            wicked.apiGet(`/verifications/${verificationId}`, (err, verificationInfo) => {
+                if (err && (err.statusCode === 404 || err.status === 404))
+                    return setTimeout(failMessage, ERROR_TIMEOUT, 404, 'The given verification ID is not valid.', next);
+                if (err)
+                    return failError(500, err, next);
+                if (!verificationInfo)
+                    return setTimeout(failMessage, ERROR_TIMEOUT, 404, 'The given verification ID is not valid.', next);
+                debug(`Successfully retrieved verification info for user ${verificationInfo.userId} (${verificationInfo.email})`);
+    
+                if (verificationType !== verificationInfo.type)
+                    return failMessage(500, 'Verification information found, does not match form data (type)', next);
+                switch (verificationType) {
+                    case "email":
+                        // We're fine, we can verify the user's email address via the wicked API (as the machine user)
+                        wicked.apiPatch(`/users/${verificationInfo.userId}`, { validated: true }, (err, userInfo) => {
+                            if (err)
+                                return setTimeout(failError, ERROR_TIMEOUT, 500, err, next);
+                            info(`Successfully patched user, validated email for user ${verificationInfo.userId} (${verificationInfo.email})`);
+    
+                            // Pop off a deletion of the verification, but don't wait for it.
+                            wicked.apiDelete(`/verifications/${verificationId}`, (err) => { if (err) error(err); });
+    
+                            // Success
+                            const viewModel = utils.createViewModel(req, authMethodId);
+                            return res.render('verify_email_post', viewModel);
+                        });
+                        break;
+                    case "lostpassword":
+                        const password = body.password;
+                        const password2 = body.password2;
+                        if (!password || !password2 || password !== password2 || password.length > 25 || password.length < 6)
+                            return failMessage(400, 'Invalid passwords/passwords do not match.', next);
+                        // OK, let's give this a try
+                        wicked.apiPatch(`/users/${verificationInfo.userId}`, { password: password }, (err, userInfo) => {
+                            if (err)
+                                return setTimeout(failError, ERROR_TIMEOUT, 500, err, next);
+    
+                            info(`Successfully patched user, changed password for user ${verificationInfo.userId} (${verificationInfo.email})`);
+    
+                            // Pop off a deletion of the verification, but don't wait for it.
+                            wicked.apiDelete(`/verifications/${verificationId}`, (err) => { if (err) error(err); });
+    
+                            // Success
+                            const viewModel = utils.createViewModel(req, authMethodId);
+                            return res.render('verify_password_reset_post', viewModel);
+                        });
+                        break;
+    
+                    default:
+                        return setTimeout(failMessage, ERROR_TIMEOUT, 500, `Unknown verification type ${verificationType}`, next);
+                }
+            });
+        };
+    };
+    
+    this.createForgotPasswordHandler = (authMethodId) => {
+        debug(`createForgotPasswordHandler(${authMethodId})`);
+        return (req, res, next) => {
+            debug(`forgotPasswordHandler(${authMethodId})`);
+    
+            const viewModel = utils.createViewModel(req, authMethodId);
+            return res.render('forgot_password', viewModel);
+        };
+    };
+        
+    this.createForgotPasswordPostHandler = (authMethodId) => {
+        debug(`createForgotPasswordPostHandler(${authMethodId})`);
+        return (req, res, next) => {
+            debug(`forgotPasswordPostHandler(${authMethodId})`);
+    
+            const body = req.body;
+            const expectedCsrfToken = utils.getAndDeleteCsrfToken(req);
+            const csrfToken = body._csrf;
+            const email = body.email;
+    
+            if (!csrfToken || expectedCsrfToken !== csrfToken)
+                return setTimeout(failMessage, ERROR_TIMEOUT, 403, 'CSRF validation failed.', next);
+            let emailValid = /.+@.+/.test(email);
+            if (emailValid) {
+                // Try to retrieve the user from the database
+                wicked.apiGet(`/users?email=${qs.escape(email)}`, (err, userInfoList) => {
+                    if (err)
+                        return error(err);
+                    if (!Array.isArray(userInfoList))
+                        return warn('forgotPasswordPostHandler: GET users by email did not return an array');
+                    if (userInfoList.length !== 1)
+                        return warn(`forgotPasswordPostHandler: GET users by email returned a list of length ${userInfoList.length}, expected length 1`);
+                    // OK, we have exactly one user
+                    const userInfo = userInfoList[0];
+                    info(`Issuing password reset request for user ${userInfo.id} (${userInfo.email})`);
+    
+                    // Fire off the verification/password reset request creation (the mailer will take care
+                    // of actually sending the emails).
+                    const authUrl = utils.getExternalUrl();
+                    const resetLink = `${authUrl}/${authMethodId}/verify/{{id}}`;
+    
+                    const verifInfo = {
+                        type: 'lostpassword',
+                        email: userInfo.email,
+                        userId: userInfo.id,
+                        link: resetLink
+                    };
+                    wicked.apiPost('/verifications', verifInfo, (err) => {
+                        if (err)
+                            return error(err);
+                        debug(`SUCCESS: Issuing password reset request for user ${userInfo.id} (${userInfo.email})`);
+                    });
+                });
+            }
+    
+            // No matter what happens, we will send the same page to the user.
+            const viewModel = utils.createViewModel(req, authMethodId);
+            res.render('forgot_password_post', viewModel);
+        };
+    };
+    
+    this.createVerifyEmailHandler = (authMethodId) => {
+        debug(`createVerifyEmailHandler(${authMethodId})`);
+        return (req, res, next) => {
+            debug(`verifyEmailHandler(${authMethodId})`);
+    
+            // Steps:
+            // 1. Verify that the user is logged in
+            // 2. Display a small form
+            // 3. Let user click a button and we will send an email (via portal-mailer)
+    
+            if (!utils.isLoggedIn(req, authMethodId)) {
+                // User is not logged in; make sure we do that first
+                const thisUri = req.originalUrl;
+                const redirectUri = `${req.app.get('base_path')}/${authMethodId}/login?redirect_uri=${qs.escape(thisUri)}`;
+                return res.redirect(redirectUri);
+            }
+            // const redirectUri = `${req.app.get('base_url')}${authMethodId}/verifyemail`;
+    
+            debug(`verifyEmailHandler(${authMethodId}): User is correctly logged in.`);
+    
+            const viewModel = utils.createViewModel(req, authMethodId);
+            viewModel.profile = req.session[authMethodId].authResponse.profile;
+    
+            return res.render('verify_email_request', viewModel);
+        };
+    };
+    
+    this.createVerifyEmailPostHandler = (authMethodId) => {
+        debug(`createVerifyEmailPostHandler(${authMethodId})`);
+        return (req, res, next) => {
+            debug(`verifyEmailPostHandler(${authMethodId})`);
+    
+            const body = req.body;
+            const expectedCsrfToken = utils.getAndDeleteCsrfToken(req);
+            const csrfToken = body._csrf;
+    
+            if (!utils.isLoggedIn(req, authMethodId))
+                return failMessage(403, 'You must be logged in to request email validation.', next);
+            if (!csrfToken || expectedCsrfToken !== csrfToken)
+                return setTimeout(failMessage, ERROR_TIMEOUT, 403, 'CSRF validation failed.', next);
+    
+            const profile = utils.getProfile(req, authMethodId);
+            const email = profile.email;
+    
+            // If we're here, the user is not trusted (as we're asking for a validation)
+            const trustUsers = false;
+            utils.createVerificationRequest(trustUsers, authMethodId, email, (err) => {
+                if (err)
+                    return failError(500, err, next);
+                return res.render('verify_email_request_confirm', utils.createViewModel(req, authMethodId));
+            });
+        };
+    };
+    
+    this.createEmailMissingHandler = (authMethodId, continueAuthenticate) => {
+        debug(`createEmailMissingHandler(${authMethodId})`);
+        return (req, res, next, customId) => {
+            debug(`emailMissingHandler(${authMethodId})`);
+    
+            utils.getUserByCustomId(customId, (err, userInfo) => {
+                if (err)
+                    return failError(500, err, next);
+                // Known user, and known email address?
+                if (userInfo && userInfo.email)
+                    return continueAuthenticate(req, res, next, userInfo.email);
+                // Unknown user, ask for email please            
+                const viewModel = utils.createViewModel(req, authMethodId);
+                return res.render('email_missing', viewModel);
+            });
+        };
+    };
+    
+    this.createEmailMissingPostHandler = (authMethodId, continueAuthenticate) => {
+        debug(`createEmailMissingPostHandler(${authMethodId})`);
+        return (req, res, next) => {
+            debug(`emailMissingPostHandler(${authMethodId})`);
+    
+            const body = req.body;
+            const expectedCsrfToken = utils.getAndDeleteCsrfToken(req);
+            const csrfToken = body._csrf;
+    
+            if (!csrfToken || expectedCsrfToken !== csrfToken)
+                return setTimeout(failMessage, ERROR_TIMEOUT, 403, 'CSRF validation failed.', next);
+    
+            const email = body.email;
+            const email2 = body.email2;
+    
+            if (!email || !email2)
+                return setTimeout(failMessage, ERROR_TIMEOUT, 400, 'Email address or confirmation not passed in.', next);
+            if (email !== email2)
+                return setTimeout(failMessage, ERROR_TIMEOUT, 400, 'Email address and confirmation of email address do not match', next);
+    
+            // Pass back email address to calling IdP (e.g. Twitter)
+            return continueAuthenticate(req, res, next, email);
+        };
+    };
+    
     const initAuthRequest = (req) => {
         debug(`initAuthRequest(${authMethodId})`);
         if (!req.session)
@@ -399,11 +661,60 @@ function GenericOAuth2Router(basePath, authMethodId) {
         });
     }
 
+    // This is called as soon as we are sure that we have a logged in user, and possibly
+    // also a valid registration record (if applicable to the API). Now we also have to
+    // check the scope of the authorization request, and possible run the scopeFlow.
     function authorizeFlow(req, res, next) {
-        debug('authorizeFlow()');
+        debug(`authorizeFlow(${authMethodId})`);
         const authRequest = req.session[authMethodId].authRequest;
         const userProfile = req.session[authMethodId].authResponse.profile;
 
+        if (authRequest.trusted || authRequest.scope.length === 0) {
+            // We have a trusted application, or an empty scope, we will not need to check for scope grants.
+            return authorizeFlow_Step2(req, res, next);
+        }
+
+        return failMessage(500, 'Scope flow not yet implemented', next);
+        // return scopeFlow(req, res, next);
+    }
+
+    // Here we validate the scope, check for whether the user has granted the scopes to the
+    // application or not.
+    function scopeFlow(req, res, next) {
+        debug(`scopeFlow(${authMethodId}`);
+
+        const authRequest = req.session[authMethodId].authRequest;
+        const authResponse = req.session[authMethodId].authResponse;
+
+        const apiId = authRequest.api_id;
+        const clientId = authRequest.client_id;
+        const userId = authResponse.userId;
+
+        // Retrieve the application info for this client_id; the client_id is attached
+        // to the subscription (glue between API, application and plan), but we get the
+        // application back readily when asking for the subscription.
+        wicked.apiGet(`/subscriptions/${clientId}`, (err, subsInfo) => {
+            if (err)
+                return failError(500, err, next);
+            const appInfo = subsInfo.application;
+            if (!appInfo)
+                return failMessage(500, 'scopeFlow: Could not retrieve application info from client_id', next);
+
+            // Let's check whether the user already has some grants
+            wicked.apiGet(`/grants/${userId}/applications/${appInfo.id}/apis/${apiId}`, (err, grant) => {
+                if (err && err.status !== 404)
+                    return failError(500, err, next);
+                if (err) // status 404
+                    grant = null; // will already be null though
+                
+            });
+        });
+    }
+
+    function authorizeFlow_Step2(req, res, next) {
+        debug(`authorizeFlow_Step2(${authMethodId})`);
+        const authRequest = req.session[authMethodId].authRequest;
+        const userProfile = req.session[authMethodId].authResponse.profile;
         debug('/authorize/login: Calling authorization end point.');
         oauth2.authorize({
             response_type: authRequest.response_type,
