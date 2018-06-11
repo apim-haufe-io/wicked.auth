@@ -11,7 +11,7 @@ const request = require('request');
 const qs = require('querystring');
 
 import { failMessage, failError, failOAuth, makeError } from './utils-fail';
-import { NameSpec, StringCallback, SimpleCallback } from './types';
+import { NameSpec, StringCallback, SimpleCallback, AuthRequest, AuthResponse, AuthSession } from './types';
 import { WickedApi, WickedPool, WickedPoolCallback } from './wicked-types';
 
 const ERROR_TIMEOUT = 500; // ms
@@ -321,6 +321,26 @@ export const utils = {
         return csrfToken;
     },
 
+    getSession(req, authMethodId): AuthSession {
+        return req.session[authMethodId];
+    },
+
+    getAuthRequest: function (req, authMethodId: string): AuthRequest {
+        return req.session[authMethodId].authRequest;
+    },
+
+    setAuthRequest: function (req, authMethodId: string, authRequest: AuthRequest): void {
+        req.session[authMethodId].authRequest = authRequest;
+    },
+
+    getAuthResponse: function (req, authMethodId: string): AuthResponse {
+        return req.session[authMethodId].authResponse;
+    },
+
+    setAuthResponse: function (req, authMethodId: string, authResponse: AuthResponse): void {
+        req.session[authMethodId].authResponse = authResponse;
+    },
+
     /**
      * Checks for a user by custom ID.
      * 
@@ -376,7 +396,7 @@ export const utils = {
     getProfile: function (req, authMethodId) {
         if (!utils.isLoggedIn(req, authMethodId))
             throw new Error('Cannot get profile if not logged in');
-        return req.session[authMethodId].authResponse.profile;
+        return utils.getAuthResponse(req, authMethodId).profile;
     }
 };
 

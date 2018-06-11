@@ -1,7 +1,7 @@
 'use strict';
 
 import { GenericOAuth2Router } from '../common/generic-router';
-import { IdpOptions, ExpressHandler, AuthResponseCallback, OidcProfile, EmailMissingHandler, TwitterIdpConfig, IdentityProvider, AuthRequest, EndpointDefinition, CheckRefreshCallback } from '../common/types';
+import { IdpOptions, ExpressHandler, AuthResponseCallback, OidcProfile, EmailMissingHandler, TwitterIdpConfig, IdentityProvider, AuthRequest, EndpointDefinition, CheckRefreshCallback, AuthSession } from '../common/types';
 const { debug, info, warn, error } = require('portal-env').Logger('portal-auth:twitter');
 const Router = require('express').Router;
 
@@ -208,7 +208,7 @@ export class TwitterIdP implements IdentityProvider {
     private continueAuthenticate = (req, res, next, email) => {
         debug(`continueAuthenticate(${this.authMethodId})`);
 
-        const session = req.session[this.authMethodId];
+        const session = utils.getSession(req, this.authMethodId);
 
         if (!session ||
             !session.tmpAuthResponse) {
@@ -248,7 +248,7 @@ export class TwitterIdP implements IdentityProvider {
         // No email from Twitter, let's ask for one, but we must store the temporary authResponse for later
         // usage, in the session. It may be that emailMissingHandler is able to retrieve the email address
         // from wicked, if the user is already registered. Otherwise the user will be asked.
-        req.session[this.authMethodId].tmpAuthResponse = authResponse;
+        utils.getSession(req, this.authMethodId).tmpAuthResponse = authResponse;
 
         return this.emailMissingHandler(req, res, next, authResponse.customId);
     };

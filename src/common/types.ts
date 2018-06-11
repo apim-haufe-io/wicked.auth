@@ -53,7 +53,8 @@ export interface AuthResponseCallback {
 export interface AuthSession {
     authRequest: AuthRequest,
     authResponse?: AuthResponse,
-    tmpAuthResponse?: AuthResponse
+    tmpAuthResponse?: AuthResponse,
+    registrationNonce?: string
 };
 
 export interface OidcProfile {

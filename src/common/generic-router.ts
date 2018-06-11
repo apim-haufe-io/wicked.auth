@@ -15,7 +15,7 @@ const qs = require('querystring');
 import { utils } from './utils';
 import { utilsOAuth2 } from './utils-oauth2';
 import { failMessage, failError, failOAuth, makeError } from './utils-fail';
-import { WickedApiScopes, WickedGrantCollection, WickedGrant } from './wicked-types';
+import { WickedApiScopes, WickedGrantCollection, WickedGrant, WickedUserInfo, WickedUserCreateInfo } from './wicked-types';
 
 const ERROR_TIMEOUT = 500; // ms
 
@@ -267,7 +267,7 @@ export class GenericOAuth2Router {
             debug(`verifyEmailHandler(${authMethodId}): User is correctly logged in.`);
 
             const viewModel = utils.createViewModel(req, authMethodId);
-            viewModel.profile = req.session[authMethodId].authResponse.profile;
+            viewModel.profile = utils.getAuthResponse(req, authMethodId).profile;
 
             return res.render('verify_email_request', viewModel);
         };
@@ -429,7 +429,7 @@ export class GenericOAuth2Router {
                         }
                         // We're fine. Check for pre-existing sessions.
                         if (isLoggedIn) {
-                            const authResponse = req.session[instance.authMethodId].authResponse;
+                            const authResponse = utils.getAuthResponse(req, instance.authMethodId);
                             return instance.continueAuthorizeFlow(req, res, next, authResponse);
                         }
 
@@ -495,7 +495,7 @@ export class GenericOAuth2Router {
             debug(`/register`);
 
             // First, check the registration nonce
-            const sessionData = req.session[instance.authMethodId];
+            const sessionData = utils.getSession(req, instance.authMethodId);
             const nonce = req.body.nonce;
             if (!nonce)
                 return failMessage(400, 'Registration nonce missing.', next);
@@ -507,7 +507,7 @@ export class GenericOAuth2Router {
             const poolId = sessionData.authResponse.registrationPool;
 
             // The backend validates the data
-            wicked.apiPut(`/registrations/pools/${poolId}/users/${userId}`, req.body, (err) => {
+            wicked.apiPut(`/registrations/pools/${poolId}/users/${userId}`, req.body, function (err) {
                 if (err)
                     return failError(500, err, next);
 
@@ -529,7 +529,7 @@ export class GenericOAuth2Router {
          * Parameters: Query parameter "redirect_uri", which takes a relative path
          * to this application (including the base_path).
          */
-        this.oauthRouter.get('/login', (req, res, next) => {
+        this.oauthRouter.get('/login', function (req, res, next) {
             debug('GET /login - internal login');
 
             // Verify parameters
@@ -555,7 +555,7 @@ export class GenericOAuth2Router {
         });
     }
 
-    public continueAuthorizeFlow(req, res, next, authResponse) {
+    public continueAuthorizeFlow(req, res, next, authResponse: AuthResponse): void {
         debug('continueAuthorizeFlow()');
         // This is what happens here:
         //
@@ -576,7 +576,7 @@ export class GenericOAuth2Router {
             if (err)
                 return failMessage(500, 'checkUserFromAuthResponse: ' + err.message, next);
 
-            const authRequest = req.session[this.authMethodId].authRequest as AuthRequest;
+            const authRequest = utils.getAuthRequest(req, this.authMethodId);
             if (!authRequest)
                 return failMessage(500, 'Invalid state: authRequest is missing.', next);
 
@@ -587,7 +587,7 @@ export class GenericOAuth2Router {
                 // In this case, we don't need to check for any registrations; this is actually
                 // not possible here, as there is no API to check with. We'll just continue with
                 // redirecting to the redirect_uri in the authRequest (see GET /login).
-                req.session[this.authMethodId].authResponse = authResponse;
+                utils.setAuthResponse(req, this.authMethodId, authResponse);
 
                 debug(`continueAuthorizeFlow(${this.authMethodId}): Doing plain login/redirecting: ${authRequest.redirect_uri}`);
                 return res.redirect(authRequest.redirect_uri);
@@ -597,8 +597,8 @@ export class GenericOAuth2Router {
             if (!authRequest.api_id)
                 return failMessage(500, 'Invalid state: API in authorization request is missing.', next);
 
-            const apiId = req.session[this.authMethodId].authRequest.api_id;
-            req.session[this.authMethodId].authResponse = authResponse;
+            const apiId = authRequest.api_id;
+            utils.setAuthResponse(req, this.authMethodId, authResponse);
 
             debug('Retrieving registration info...');
             // We have an identity now, do we need registrations?
@@ -633,7 +633,7 @@ export class GenericOAuth2Router {
     private registrationFlow(poolId, req, res, next) {
         debug('registrationFlow()');
 
-        const authResponse = req.session[this.authMethodId].authResponse;
+        const authResponse = utils.getAuthResponse(req, this.authMethodId);
         const userId = authResponse.userId;
         wicked.apiGet(`/registrations/pools/${poolId}/users/${userId}`, (err, regInfo) => {
             if (err && err.statusCode !== 404)
@@ -659,10 +659,9 @@ export class GenericOAuth2Router {
 
     private renderRegister(req, res, next) {
         debug('renderRegister()');
-        // The profile is not yet available, doh
-        //const userProfile = req.session[authMethodId].authResponse.profile;
-        const authResponse = req.session[this.authMethodId].authResponse;
-        const apiId = req.session[this.authMethodId].authRequest.api_id;
+
+        const authResponse = utils.getAuthResponse(req, this.authMethodId);
+        const apiId = utils.getAuthRequest(req, this.authMethodId).api_id;
         debug(`API: ${apiId}`);
 
         utils.getPoolInfoByApi(apiId, (err, poolInfo) => {
@@ -677,7 +676,7 @@ export class GenericOAuth2Router {
             viewModel.defaultProfile = authResponse.defaultProfile;
             viewModel.poolInfo = poolInfo;
             const nonce = utils.createRandomId();
-            req.session[this.authMethodId].registrationNonce = nonce;
+            utils.getSession(req, this.authMethodId).registrationNonce = nonce;
             viewModel.nonce = nonce;
 
             debug(viewModel);
@@ -690,8 +689,8 @@ export class GenericOAuth2Router {
     // check the scope of the authorization request, and possible run the scopeFlow.
     private authorizeFlow(req, res, next) {
         debug(`authorizeFlow(${this.authMethodId})`);
-        const authRequest = req.session[this.authMethodId].authRequest;
-        const userProfile = req.session[this.authMethodId].authResponse.profile;
+        const authRequest = utils.getAuthRequest(req, this.authMethodId);
+        const userProfile = utils.getAuthResponse(req, this.authMethodId).profile;
 
         if (authRequest.trusted || authRequest.scope.length === 0) {
             // We have a trusted application, or an empty scope, we will not need to check for scope grants.
@@ -709,8 +708,8 @@ export class GenericOAuth2Router {
 
         const instance = this;
 
-        const authRequest = req.session[this.authMethodId].authRequest;
-        const authResponse = req.session[this.authMethodId].authResponse;
+        const authRequest = utils.getAuthRequest(req, this.authMethodId);
+        const authResponse = utils.getAuthResponse(req, this.authMethodId);
 
         const apiId = authRequest.api_id;
         const clientId = authRequest.client_id;
@@ -773,10 +772,10 @@ export class GenericOAuth2Router {
         return missingGrants;
     }
 
-    private authorizeFlow_Step2(req, res, next) {
+    private authorizeFlow_Step2(req, res, next): void {
         debug(`authorizeFlow_Step2(${this.authMethodId})`);
-        const authRequest = req.session[this.authMethodId].authRequest;
-        const userProfile = req.session[this.authMethodId].authResponse.profile;
+        const authRequest = utils.getAuthRequest(req, this.authMethodId);
+        const userProfile = utils.getAuthResponse(req, this.authMethodId).profile;
         debug('/authorize/login: Calling authorization end point.');
         oauth2.authorize({
             response_type: authRequest.response_type,
@@ -794,7 +793,7 @@ export class GenericOAuth2Router {
             let uri = redirectUri.redirect_uri;
             // For this redirect_uri, which can contain either a code or an access token,
             // associate the profile (userInfo).
-            profileStore.registerTokenOrCode(redirectUri, authRequest.api_id, userProfile, (err) => {
+            profileStore.registerTokenOrCode(redirectUri, authRequest.api_id, userProfile, function (err) {
                 if (err)
                     return failError(500, err, next);
                 if (authRequest.state)
@@ -911,19 +910,20 @@ export class GenericOAuth2Router {
     }
 
     // Takes an authResponse, returns an authResponse
-    private createUserFromDefaultProfile(authResponse, callback) {
+    private createUserFromDefaultProfile(authResponse: AuthResponse, callback: AuthResponseCallback) {
         debug('createUserFromDefaultProfile()');
         const instance = this;
         // The defaultProfile MUST contain an email address.
         // The id of the new user is created by the API and returned here;
         // This is still an incognito user, name and such are amended later
         // in the process, via the registration.
-        const userCreateInfo = {
+        const userCreateInfo: WickedUserCreateInfo = {
             customId: authResponse.customId,
             email: authResponse.defaultProfile.email,
-            validated: authResponse.defaultProfile.email_verified
+            validated: authResponse.defaultProfile.email_verified,
+            groups: authResponse.defaultGroups
         };
-        wicked.apiPost('/users', userCreateInfo, function (err, userInfo) {
+        wicked.apiPost('/users', userCreateInfo, function (err, userInfo: WickedUserInfo) {
             if (err) {
                 error('createUserFromDefaultProfile: POST to /users failed.');
                 error(err);
@@ -952,7 +952,7 @@ export class GenericOAuth2Router {
         });
     }
 
-    private tokenRefreshToken(tokenRequest, callback) {
+    private tokenRefreshToken(tokenRequest: TokenRequest, callback: AccessTokenCallback) {
         debug('tokenRefreshToken()');
         const instance = this;
         // Client validation and all that stuff can be done in the OAuth2 adapter,
@@ -970,6 +970,9 @@ export class GenericOAuth2Router {
             if (!userId)
                 return failOAuth(500, 'server_error', 'could not correctly retrieve authenticated user id from refresh token', callback);
             instance.idp.checkRefreshToken(tokenInfo, (err, refreshCheckResult) => {
+                // TODO: This might be possible to do for all APIs, e.g. check for the previously
+                // created user (in wicked). If not present -> Don't refres. We can still keep
+                // the callback to the IdP for additional things (I can't imagine what right now though).
                 if (err)
                     return failOAuth(500, 'server_error', 'checking the refresh token returned an unexpected error.', callback);
                 wicked.apiGet('users/' + userId, function (err, userInfo) {

@@ -13,6 +13,14 @@ export interface WickedUserInfo {
     groups: string[]
 }
 
+export interface WickedUserCreateInfo {
+    customId?: string,
+    email: string,
+    password?: string,
+    validated: boolean,
+    groups: string[]
+}
+
 export interface WickedApi {
     id: string,
     name: string,
