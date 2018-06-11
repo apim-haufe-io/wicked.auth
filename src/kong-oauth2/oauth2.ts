@@ -1,57 +1,181 @@
 'use strict';
 
-const qs = require('querystring');
+import * as qs from 'querystring';
+import { SimpleCallback, StringCallback, AuthRequest, TokenRequest, OAuth2Request, AccessToken, AccessTokenCallback } from '../common/types';
+import { WickedApplication, WickedSubscription, KongApi, KongApiCallback, WickedApi, WickedApiCallback } from '../common/wicked-types';
 const { debug, info, warn, error } = require('portal-env').Logger('portal-auth:oauth2');
 const async = require('async');
 const wicked = require('wicked-sdk');
 const request = require('request');
 
-const utils = require('../common/utils');
-const kongUtils = require('./kong-utils');
-const { failOAuth } = require('../common/utils-fail');
+import { utils } from '../common/utils';
+import { kongUtils }  from './kong-utils';
+import { failOAuth } from '../common/utils-fail';
 
 // We need this to accept self signed and Let's Encrypt certificates
 var https = require('https');
 var agentOptions = { rejectUnauthorized: false };
 var sslAgent = new https.Agent(agentOptions);
 
-const oauth2 = function () { };
+// interface InputData {
+//     grant_type?: string,
+//     response_type?: string,
+//     authenticated_userid: string,
+//     auth_method: string,
+//     api_id: string,
+//     client_id?: string,
+//     client_secret?: string,
+//     refresh_token?: string,
+//     code?: string,
+//     scope: string[],
+//     session_data?: string
+// }
 
-oauth2.authorize = function (inputData, callback) {
-    validateResponseType(inputData, function (err) {
-        if (err)
-            return callback(err);
-        switch (inputData.response_type) {
-            case 'token':
-                return authorizeImplicit(inputData, callback);
-            case 'code':
-                return authorizeAuthorizationCode(inputData, callback);
-        }
-        return failOAuth(400, 'invalid_request', 'unknown error or response_type invalid.', callback);
-    });
-};
+// interface SubscriptionInfo {
+//     application: string,
+//     api: string,
+//     auth: string,
+//     plan: string,
+//     clientId: string,
+//     clientSecret: string,
+//     trusted: boolean
+// }
 
-oauth2.token = function (inputData, callback) {
-    validateGrantType(inputData, function (err) {
-        if (err)
-            return callback(err);
-        switch (inputData.grant_type) {
-            case 'client_credentials':
-                return tokenClientCredentials(inputData, callback);
-            case 'authorization_code':
-                return tokenAuthorizationCode(inputData, callback);
-            case 'refresh_token':
-                return tokenRefreshToken(inputData, callback);
-            case 'password':
-                return tokenPasswordGrant(inputData, callback);
-        }
-        return failOAuth(400, 'invalid_request', 'unknown error or grant_type invalid', callback);
-    });
+// interface ApplicationInfo {
+//     id: string,
+//     name: string
+//     redirectUri: string,
+//     confidential: boolean
+// }
+
+interface ConsumerInfo {
+    id: string,
+    username: string,
+    custom_id: string
+}
+
+interface KongOAuth2Config {
+    provision_key: string,
+    enable_client_credentials: boolean,
+    enable_implicit_grant: boolean,
+    enable_authorization_code: boolean,
+    enable_password_grant: boolean
+}
+
+interface OAuthInfo {
+    inputData: OAuth2Request,
+    oauth2Config: KongOAuth2Config,
+    provisionKey: string,
+    subsInfo: WickedSubscription,
+    appInfo: WickedApplication,
+    consumer: ConsumerInfo,
+    apiInfo: KongApi,
+}
+
+interface OAuthInfoCallback {
+    (err, oauthInfo?: OAuthInfo): void
+}
+
+interface AuthorizeOAuthInfo extends OAuthInfo {
+    inputData: AuthRequest,
+    redirectUri?: string
+}
+
+interface TokenOAuthInfo extends OAuthInfo {
+    inputData: TokenRequest,
+    accessToken?: AccessToken
+}
+
+interface AuthorizeOAuthInfoCallback {
+    (err, oauthInfo?: AuthorizeOAuthInfo): void
+}
+
+interface TokenOAuthInfoCallback {
+    (err, oauthInfo?: TokenOAuthInfo): void
+}
+
+interface RedirectUri {
+    redirect_uri: string,
+    session_data?: string
+}
+
+interface RedirectUriCallback {
+    (err, authorizeData?: RedirectUri): void
+}
+
+interface RequestHeaders {
+    [name: string]: string
+}
+
+interface AuthorizeRequestPayload {
+    url: string,
+    headers: RequestHeaders,
+    agent: any,
+    json: boolean,
+    body: object
+}
+
+interface AuthorizeRequestPayloadCallback {
+    (err, authorizeRequest?: AuthorizeRequestPayload): void
+}
+
+interface TokenKongInvoker {
+    (oauthInfo: OAuthInfo, callback: TokenOAuthInfoCallback): void
+}
+
+interface AuthorizeKongInvoker {
+    (oauthInfo: OAuthInfo, callback: AuthorizeOAuthInfoCallback): void
+}
+
+interface TokenRequestPayload {
+    url: string,
+    headers: RequestHeaders,
+    agent: any,
+    json: boolean,
+    body: object
+}
+
+interface TokenRequestPayloadCallback {
+    (err, tokenRequest?: TokenRequestPayload): void
+}
+
+export const oauth2 = {
+    authorize: function (inputData: AuthRequest, callback: RedirectUriCallback) {
+        validateResponseType(inputData, function (err) {
+            if (err)
+                return callback(err);
+            switch (inputData.response_type) {
+                case 'token':
+                    return authorizeImplicit(inputData, callback);
+                case 'code':
+                    return authorizeAuthorizationCode(inputData, callback);
+            }
+            return failOAuth(400, 'invalid_request', 'unknown error or response_type invalid.', callback);
+        });
+    },
+
+    token: function (inputData: TokenRequest, callback: AccessTokenCallback) {
+        validateGrantType(inputData, function (err) {
+            if (err)
+                return callback(err);
+            switch (inputData.grant_type) {
+                case 'client_credentials':
+                    return tokenClientCredentials(inputData, callback);
+                case 'authorization_code':
+                    return tokenAuthorizationCode(inputData, callback);
+                case 'refresh_token':
+                    return tokenRefreshToken(inputData, callback);
+                case 'password':
+                    return tokenPasswordGrant(inputData, callback);
+            }
+            return failOAuth(400, 'invalid_request', 'unknown error or grant_type invalid', callback);
+        });
+    }
 };
 
 // -----------------------------------
 
-function validateResponseType(inputData, callback) {
+function validateResponseType(inputData: AuthRequest, callback: SimpleCallback) {
     debug('validateResponseType()');
     debug('responseType: ' + inputData.response_type);
     if (!inputData.response_type)
@@ -68,7 +192,7 @@ function validateResponseType(inputData, callback) {
     return failOAuth(400, 'unsupported_response_type', `invalid response_type '${inputData.response_type}'`, callback);
 }
 
-function validateGrantType(inputData, callback) {
+function validateGrantType(inputData: TokenRequest, callback: SimpleCallback) {
     debug('validateGrantType()');
     debug(`grant_type: ${inputData.grant_type}`);
     if (!inputData.grant_type)
@@ -91,7 +215,7 @@ function validateGrantType(inputData, callback) {
 // IMPLICIT GRANT
 // -----------------------------------
 
-function authorizeImplicit(inputData, callback) {
+function authorizeImplicit(inputData: AuthRequest, callback: RedirectUriCallback) {
     debug('authorizeImplicit()');
     // debug(inputData);
     async.series({
@@ -103,7 +227,8 @@ function authorizeImplicit(inputData, callback) {
 
         // Fetch result of authorizeImplicitInternal
         const returnValue = {
-            redirect_uri: results.redirectUri
+            redirect_uri: results.redirectUri,
+            session_data: null
         };
         // If session_data was provided, also return it
         if (inputData.session_data)
@@ -113,7 +238,7 @@ function authorizeImplicit(inputData, callback) {
     });
 }
 
-function validateImplicit(inputData, callback) {
+function validateImplicit(inputData: AuthRequest, callback: SimpleCallback) {
     debug('validateImplicit()');
     debug('authRequest: ' + JSON.stringify(inputData));
     if (!inputData.client_id)
@@ -130,12 +255,12 @@ function validateImplicit(inputData, callback) {
     callback(null);
 }
 
-function authorizeImplicitInternal(inputData, callback) {
+function authorizeImplicitInternal(inputData: AuthRequest, callback: StringCallback) {
     debug('authorizeImplicitInternal()');
     return authorizeFlow(inputData, authorizeImplicitKong, callback);
 }
 
-function authorizeImplicitKong(oauthInfo, callback) {
+function authorizeImplicitKong(oauthInfo: AuthorizeOAuthInfo, callback: AuthorizeOAuthInfoCallback) {
     debug('authorizeImplicitKong()');
     // Check that the API is configured for implicit grant
     if (!oauthInfo.oauth2Config ||
@@ -150,7 +275,7 @@ function authorizeImplicitKong(oauthInfo, callback) {
 // AUTHORIZATION CODE GRANT - AUTHORIZE
 // -----------------------------------
 
-function authorizeAuthorizationCode(inputData, callback) {
+function authorizeAuthorizationCode(inputData: AuthRequest, callback: RedirectUriCallback) {
     debug('authorizeAuthorizationCode()');
     debug(inputData);
     async.series({
@@ -162,7 +287,8 @@ function authorizeAuthorizationCode(inputData, callback) {
 
         // Fetch result of authorizeAuthorizationCodeInternal
         const returnValue = {
-            redirect_uri: results.redirectUri
+            redirect_uri: results.redirectUri,
+            session_data: null
         };
         // If session_data was provided, also return it
         if (inputData.session_data)
@@ -172,7 +298,7 @@ function authorizeAuthorizationCode(inputData, callback) {
     });
 }
 
-function validateAuthorizationCode(inputData, callback) {
+function validateAuthorizationCode(inputData: AuthRequest, callback: SimpleCallback) {
     debug('validateAuthorizationCode()');
     debug('inputData: ' + JSON.stringify(inputData));
     if (!inputData.client_id)
@@ -189,12 +315,12 @@ function validateAuthorizationCode(inputData, callback) {
     callback(null);
 }
 
-function authorizeAuthorizationCodeInternal(inputData, callback) {
+function authorizeAuthorizationCodeInternal(inputData: AuthRequest, callback: StringCallback) {
     debug('authorizeAuthorizationCodeInternal()');
     return authorizeFlow(inputData, authorizeAuthorizationCodeKong, callback);
 }
 
-function authorizeAuthorizationCodeKong(oauthInfo, callback) {
+function authorizeAuthorizationCodeKong(oauthInfo: AuthorizeOAuthInfo, callback: AuthorizeOAuthInfoCallback) {
     debug('authorizeAuthorizationCodeKong()');
     // Check that the API is configured for authorization code grant
     if (!oauthInfo.oauth2Config ||
@@ -204,7 +330,7 @@ function authorizeAuthorizationCodeKong(oauthInfo, callback) {
     return authorizeWithKong(oauthInfo, 'code', callback);
 }
 
-function authorizeWithKong(oauthInfo, responseType, callback) {
+function authorizeWithKong(oauthInfo: AuthorizeOAuthInfo, responseType: string, callback: AuthorizeOAuthInfoCallback) {
     debug('authorizeWithKong()');
     async.waterfall([
         callback => getAuthorizeRequest(responseType, oauthInfo, callback),
@@ -221,7 +347,7 @@ function authorizeWithKong(oauthInfo, responseType, callback) {
 // AUTHORIZATION CODE GRANT - TOKEN
 // -----------------------------------
 
-function tokenAuthorizationCode(inputData, callback) {
+function tokenAuthorizationCode(inputData: TokenRequest, callback: AccessTokenCallback): void {
     debug('tokenAuthorizationCode()');
     debug(inputData);
     async.series({
@@ -234,7 +360,7 @@ function tokenAuthorizationCode(inputData, callback) {
     });
 }
 
-function validateTokenAuthorizationCode(inputData, callback) {
+function validateTokenAuthorizationCode(inputData: TokenRequest, callback: SimpleCallback): void {
     debug('validateTokenAuthorizationCode()');
     if (!inputData.client_id)
         return failOAuth(400, 'invalid_request', 'client_id is missing', callback);
@@ -245,12 +371,12 @@ function validateTokenAuthorizationCode(inputData, callback) {
     callback(null);
 }
 
-function tokenAuthorizationCodeInternal(inputData, callback) {
+function tokenAuthorizationCodeInternal(inputData: TokenRequest, callback: AccessTokenCallback) {
     debug('tokenAuthorizationCodeInternal()');
     return tokenFlow(inputData, tokenAuthorizationCodeKong, callback);
 }
 
-function tokenAuthorizationCodeKong(oauthInfo, callback) {
+function tokenAuthorizationCodeKong(oauthInfo: TokenOAuthInfo, callback: TokenOAuthInfoCallback) {
     debug(oauthInfo.oauth2Config);
     if (!oauthInfo.oauth2Config ||
         !oauthInfo.oauth2Config.enable_authorization_code)
@@ -259,7 +385,7 @@ function tokenAuthorizationCodeKong(oauthInfo, callback) {
     return tokenWithKong(oauthInfo, 'authorization_code', callback);
 }
 
-function tokenWithKong(oauthInfo, grantType, callback) {
+function tokenWithKong(oauthInfo: TokenOAuthInfo, grantType: string, callback: TokenOAuthInfoCallback) {
     async.waterfall([
         callback => getTokenRequest(grantType, oauthInfo, callback),
         (tokenRequest, callback) => postTokenRequest(tokenRequest, callback)
@@ -275,16 +401,16 @@ function tokenWithKong(oauthInfo, grantType, callback) {
 // CLIENT CREDENTIALS
 // -----------------------------------
 
-function tokenClientCredentials(inputData, callback) {
+function tokenClientCredentials(inputData: TokenRequest, callback: AccessTokenCallback) {
     debug('tokenClientCredentials()');
     debug(inputData);
     async.series({
-        validate: function (callback) { validateClientCredentials(inputData, callback); },
-        accessToken: function (callback) { tokenClientCredentialsInternal(inputData, callback); }
+        validate: function (callback: SimpleCallback) { validateClientCredentials(inputData, callback); },
+        accessToken: function (callback: AccessTokenCallback) { tokenClientCredentialsInternal(inputData, callback); }
     }, function (err, result) {
         if (err)
             return callback(err);
-        const returnValue = result.accessToken;
+        const returnValue = result.accessToken as AccessToken;
         // If session_data was provided, also return it
         if (inputData.session_data)
             returnValue.session_data = inputData.session_data;
@@ -292,7 +418,7 @@ function tokenClientCredentials(inputData, callback) {
     });
 }
 
-function validateClientCredentials(inputData, callback) {
+function validateClientCredentials(inputData: TokenRequest, callback: SimpleCallback) {
     debug('validateClientCredentials()');
     if (!inputData.client_id)
         return failOAuth(400, 'invalid_request', 'client_id is missing', callback);
@@ -306,11 +432,11 @@ function validateClientCredentials(inputData, callback) {
     callback(null);
 }
 
-function tokenClientCredentialsInternal(inputData, callback) {
+function tokenClientCredentialsInternal(inputData: TokenRequest, callback: AccessTokenCallback) {
     return tokenFlow(inputData, tokenClientCredentialsKong, callback);
 }
 
-function tokenClientCredentialsKong(oauthInfo, callback) {
+function tokenClientCredentialsKong(oauthInfo: TokenOAuthInfo, callback: TokenOAuthInfoCallback) {
     debug('tokenClientCredentialsKong()');
     debug(oauthInfo.oauth2Config);
     if (!oauthInfo.oauth2Config ||
@@ -324,7 +450,7 @@ function tokenClientCredentialsKong(oauthInfo, callback) {
 // RESOURCE OWNER PASSWORD GRANT
 // -----------------------------------
 
-function tokenPasswordGrant(inputData, callback) {
+function tokenPasswordGrant(inputData: TokenRequest, callback: AccessTokenCallback) {
     debug('tokenPasswordGrant()');
     debug(inputData);
     async.series({
@@ -341,7 +467,7 @@ function tokenPasswordGrant(inputData, callback) {
     });
 }
 
-function validatePasswordGrant(inputData, callback) {
+function validatePasswordGrant(inputData: TokenRequest, callback: SimpleCallback) {
     debug('validatePasswordGrant()');
     if (!inputData.client_id)
         return failOAuth(400, 'invalid_request', 'client_id is missing', callback);
@@ -356,12 +482,12 @@ function validatePasswordGrant(inputData, callback) {
     return callback(null);
 }
 
-function tokenPasswordGrantInternal(inputData, callback) {
+function tokenPasswordGrantInternal(inputData: TokenRequest, callback: AccessTokenCallback) {
     debug('tokenAuthorizationCodeInternal()');
     return tokenFlow(inputData, tokenPasswordGrantKong, callback);
 }
 
-function tokenPasswordGrantKong(oauthInfo, callback) {
+function tokenPasswordGrantKong(oauthInfo: TokenOAuthInfo, callback: TokenOAuthInfoCallback) {
     debug(oauthInfo.oauth2Config);
     if (!oauthInfo.oauth2Config ||
         !oauthInfo.oauth2Config.enable_password_grant)
@@ -374,7 +500,7 @@ function tokenPasswordGrantKong(oauthInfo, callback) {
 // REFRESH TOKEN
 // -----------------------------------
 
-function tokenRefreshToken(inputData, callback) {
+function tokenRefreshToken(inputData: TokenRequest, callback: AccessTokenCallback) {
     debug('tokenRefreshToken()');
     debug(inputData);
     async.series({
@@ -391,7 +517,7 @@ function tokenRefreshToken(inputData, callback) {
     });
 }
 
-function validateRefreshToken(inputData, callback) {
+function validateRefreshToken(inputData: TokenRequest, callback: SimpleCallback) {
     debug('validateRefreshToken()');
     if (!inputData.client_id)
         return failOAuth(400, 'invalid_request', 'client_id is missing', callback);
@@ -406,12 +532,12 @@ function validateRefreshToken(inputData, callback) {
     return callback(null);
 }
 
-function tokenRefreshTokenInternal(inputData, callback) {
+function tokenRefreshTokenInternal(inputData: TokenRequest, callback: AccessTokenCallback) {
     debug('tokenRefreshTokenInternal()');
     return tokenFlow(inputData, tokenRefreshTokenKong, callback);
 }
 
-function tokenRefreshTokenKong(oauthInfo, callback) {
+function tokenRefreshTokenKong(oauthInfo: TokenOAuthInfo, callback: TokenOAuthInfoCallback) {
     debug('tokenRefreshTokenKong()');
     return tokenWithKong(oauthInfo, 'refresh_token', callback);
 }
@@ -420,7 +546,7 @@ function tokenRefreshTokenKong(oauthInfo, callback) {
 // AUTHORIZATION ENDPOINT HELPER METHODS
 // -----------------------------------
 
-function authorizeFlow(inputData, authorizeKongInvoker, callback) {
+function authorizeFlow(inputData: AuthRequest, authorizeKongInvoker: AuthorizeKongInvoker, callback: StringCallback) {
     debug('authorizeFlow()');
     // We'll add info to this thing along the way; this is how it will look:
     // {
@@ -464,7 +590,7 @@ function authorizeFlow(inputData, authorizeKongInvoker, callback) {
     //   }
     //   redirectUri: (redirect URI including access token)
     // }
-    const oauthInfo = { inputData: inputData };
+    const oauthInfo = { inputData: inputData } as AuthorizeOAuthInfo;
 
     async.series([
         callback => lookupSubscription(oauthInfo, callback),
@@ -484,7 +610,7 @@ function authorizeFlow(inputData, authorizeKongInvoker, callback) {
     });
 }
 
-function getAuthorizeRequest(responseType, oauthInfo, callback) {
+function getAuthorizeRequest(responseType: string, oauthInfo: AuthorizeOAuthInfo, callback: AuthorizeRequestPayloadCallback) {
     const apiUrl = wicked.getExternalApiUrl();
     const authorizeUrl = buildKongUrl(apiUrl, oauthInfo.apiInfo.uris[0], '/oauth2/authorize');
     debug('authorizeUrl: ' + authorizeUrl);
@@ -518,7 +644,8 @@ function getAuthorizeRequest(responseType, oauthInfo, callback) {
         provision_key: oauthInfo.provisionKey,
         client_id: oauthInfo.subsInfo.clientId,
         redirect_uri: oauthInfo.appInfo.redirectUri,
-        authenticated_userid: oauthInfo.inputData.authenticated_userid
+        authenticated_userid: oauthInfo.inputData.authenticated_userid,
+        scope: null
     };
     if (scope)
         oauthBody.scope = scope;
@@ -535,7 +662,7 @@ function getAuthorizeRequest(responseType, oauthInfo, callback) {
     return callback(null, requestParameters);
 }
 
-function postAuthorizeRequest(authorizeRequest, callback) {
+function postAuthorizeRequest(authorizeRequest: AuthorizeRequestPayload, callback: StringCallback) {
     debug('postAuthorizeRequest()');
     // Jetzt kommt der spannende Moment, wo der Frosch ins Wasser rennt
     request.post(authorizeRequest, function (err, res, body) {
@@ -562,9 +689,9 @@ function postAuthorizeRequest(authorizeRequest, callback) {
 // TOKEN ENDPOINT HELPER METHODS
 // -----------------------------------
 
-function tokenFlow(inputData, tokenKongInvoker, callback) {
+function tokenFlow(inputData: TokenRequest, tokenKongInvoker: TokenKongInvoker, callback: AccessTokenCallback) {
     debug('tokenFlow()');
-    const oauthInfo = { inputData: inputData };
+    const oauthInfo = { inputData: inputData } as TokenOAuthInfo;
 
     async.series([
         callback => lookupSubscription(oauthInfo, callback),
@@ -587,7 +714,7 @@ function tokenFlow(inputData, tokenKongInvoker, callback) {
 
 // Note that this is not necessary for the /authorize end point, only for the token
 // end point. Maybe it might be a good idea to make this behaviour configurable.
-function validateTokenClientCredentials(oauthInfo, callback) {
+function validateTokenClientCredentials(oauthInfo: TokenOAuthInfo, callback: TokenOAuthInfoCallback) {
     debug('validateTokenClientCredentials()');
     const appId = oauthInfo.appInfo.id;
     const grantType = oauthInfo.inputData.grant_type;
@@ -618,12 +745,12 @@ function validateTokenClientCredentials(oauthInfo, callback) {
     return callback(null, oauthInfo);
 }
 
-function getTokenRequest(grantType, oauthInfo, callback) {
+function getTokenRequest(grantType: string, oauthInfo: TokenOAuthInfo, callback: TokenRequestPayloadCallback) {
     const apiUrl = wicked.getExternalApiUrl();
     const tokenUrl = buildKongUrl(apiUrl, oauthInfo.apiInfo.uris[0], '/oauth2/token');
     debug('tokenUrl: ' + tokenUrl);
 
-    let headers = null;
+    let headers: RequestHeaders = null;
     let agent = null;
 
     // Workaround for local connections and testing
@@ -662,7 +789,7 @@ function getTokenRequest(grantType, oauthInfo, callback) {
                 client_id: oauthInfo.inputData.client_id,
                 client_secret: oauthInfo.inputData.client_secret,
                 code: oauthInfo.inputData.code,
-                redirect_uri: oauthInfo.appInfo.redirect_uri
+                redirect_uri: oauthInfo.appInfo.redirectUri
             };
             break;
         case 'password':
@@ -697,18 +824,20 @@ function getTokenRequest(grantType, oauthInfo, callback) {
         agent: agent,
         json: true,
         body: tokenBody
-    };
+    } as TokenRequestPayload;
 
     debug(JSON.stringify(tokenRequest, null, 2));
 
     return callback(null, tokenRequest);
 }
 
-function postTokenRequest(tokenRequest, callback) {
+function postTokenRequest(tokenRequest: TokenRequestPayload, callback: AccessTokenCallback) {
     request.post(tokenRequest, function (err, res, body) {
         if (err)
             return failOAuth(500, 'server_error', 'calling kong token endpoint returned an error', err, callback);
         const jsonBody = utils.getJson(body);
+        // jsonBody is now either of AccessToken type, or it contains an error
+        // and an error_description
         if (res.statusCode > 299) {
             debug('postTokenRequest: Kong did not create a token, response body:');
             debug(JSON.stringify(jsonBody));
@@ -728,7 +857,7 @@ function postTokenRequest(tokenRequest, callback) {
 // GENERIC HELPER METHODS
 // -----------------------------------
 
-function lookupSubscription(oauthInfo, callback) {
+function lookupSubscription(oauthInfo: OAuthInfo, callback: OAuthInfoCallback) {
     debug('lookupSubscription()');
     wicked.apiGet('subscriptions/' + oauthInfo.inputData.client_id, function (err, subscription) {
         if (err)
@@ -755,7 +884,7 @@ function lookupSubscription(oauthInfo, callback) {
 }
 
 const _oauth2Configs = {};
-function getOAuth2Config(oauthInfo, callback) {
+function getOAuth2Config(oauthInfo: OAuthInfo, callback: OAuthInfoCallback) {
     debug('getOAuth2Config() for ' + oauthInfo.inputData.api_id);
     const apiId = oauthInfo.inputData.api_id;
     if (_oauth2Configs[apiId]) {
@@ -809,8 +938,8 @@ function getOAuth2Config(oauthInfo, callback) {
 //     });
 // }
 
-const _kongApis = {};
-function getKongApi(apiId, callback) {
+const _kongApis: { [apiId: string]: KongApi } = {};
+function getKongApi(apiId: string, callback: KongApiCallback) {
     debug(`getKongApi(${apiId})`);
     if (_kongApis[apiId])
         return callback(null, _kongApis[apiId]);
@@ -822,8 +951,8 @@ function getKongApi(apiId, callback) {
     });
 }
 
-const _portalApis = {};
-function getPortalApi(apiId, callback) {
+const _portalApis: { [apiId: string]: WickedApi } = {};
+function getPortalApi(apiId, callback: WickedApiCallback): void {
     debug(`getPortalApi(${apiId})`);
     if (_portalApis[apiId])
         return callback(null, _portalApis[apiId]);
@@ -835,7 +964,7 @@ function getPortalApi(apiId, callback) {
     });
 }
 
-function lookupApi(oauthInfo, callback) {
+function lookupApi(oauthInfo: OAuthInfo, callback: OAuthInfoCallback): void {
     const apiId = oauthInfo.subsInfo.api;
     debug('lookupApi() for API ' + apiId);
     async.parallel({
@@ -845,8 +974,8 @@ function lookupApi(oauthInfo, callback) {
         if (err) {
             return failOAuth(500, 'server_error', 'could not retrieve API information from API or kong', err, callback);
         }
-        const apiInfo = results.kongApi;
-        const portalApiInfo = results.portalApi;
+        const apiInfo = results.kongApi as KongApi;
+        const portalApiInfo = results.portalApi as WickedApi;
 
         if (!apiInfo.uris) {
             return failOAuth(500, 'server_error', `api ${apiId} does not have a valid uris setting`, callback);
@@ -868,7 +997,7 @@ function lookupApi(oauthInfo, callback) {
     });
 }
 
-function buildKongUrl(apiUrl, requestPath, additionalPath) {
+function buildKongUrl(apiUrl: string, requestPath: string, additionalPath: string): string {
     let hostUrl = apiUrl;
     let reqPath = requestPath;
     let addPath = additionalPath;
@@ -883,4 +1012,4 @@ function buildKongUrl(apiUrl, requestPath, additionalPath) {
     return hostUrl + reqPath + addPath;
 }
 
-module.exports = oauth2;
+// module.exports = oauth2;

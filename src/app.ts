@@ -8,29 +8,26 @@ const path = require('path');
 const logger = require('morgan');
 const wicked = require('wicked-sdk');
 const passport = require('passport');
-//const csurf = require('csurf');
 
 const session = require('express-session');
 // const FileStore = require('session-file-store')(session);
-const redisConnection = require('./common/redis-connection');
+import { redisConnection } from './common/redis-connection';
 
-const google = require('./providers/google');
-const github = require('./providers/github');
-const twitter = require('./providers/twitter');
-const facebook = require('./providers/facebook');
-const adfs = require('./providers/adfs');
+import { LocalIdP } from './providers/local';
+import { DummyIdP } from './providers/dummy';
+import { GithubIdP } from './providers/github';
+import { GoogleIdP } from './providers/google';
+import { TwitterIdP } from './providers/twitter';
+// import { FacebookIdP } from './providers/facebook';
+// import { AdfsIdP } from './providers/adfs';
+// import { SamlIdP } from './providers/saml';
 
-const LocalIdP = require('./providers/local');
-const DummyIdP = require('./providers/dummy');
-const GithubIdP = require('./providers/github');
-const GoogleIdP = require('./providers/google');
-const TwitterIdP = require('./providers/twitter');
-const FacebookIdP = require('./providers/facebook');
-const AdfsIdP = require('./providers/adfs');
-const SamlIdP = require('./providers/saml');
+import { StatusError } from './common/utils-fail';
+import { SimpleCallback } from './common/types';
+import { WickedAuthServer } from './common/wicked-types';
 
-const utils = require('./common/utils');
-const utilsOAuth2 = require('./common/utils-oauth2');
+import { utils } from './common/utils';
+import { utilsOAuth2 } from './common/utils-oauth2';
 
 // Use default options, see https://www.npmjs.com/package/session-file-store
 const sessionStoreOptions = {};
@@ -44,10 +41,9 @@ if (process.env.AUTH_SERVER_SESSION_MINUTES) {
 }
 debug('Session duration: ' + sessionMinutes + ' minutes.');
 
+export const app: any = express();
 
-const app = express();
-
-app.initApp = function (authServerConfig, callback) {
+app.initApp = function (authServerConfig: WickedAuthServer, callback: SimpleCallback) {
     // Store auth Config with application
     app.authConfig = authServerConfig;
 
@@ -70,9 +66,18 @@ app.initApp = function (authServerConfig, callback) {
 
     const basePath = app.get('base_path');
 
-    app.use(basePath + '/bootstrap', express.static(path.join(__dirname, 'node_modules/bootstrap/dist')));
-    app.use(basePath + '/jquery', express.static(path.join(__dirname, 'node_modules/jquery/dist')));
-    app.use(basePath + '/content', utils.serveStaticContent);
+    app.use(basePath + '/bootstrap', express.static(path.join(__dirname, 'assets/bootstrap/dist')));
+    app.use(basePath + '/jquery', express.static(path.join(__dirname, 'assets/jquery/dist')));
+
+    const serveStaticContent = express.Router();
+    serveStaticContent.get('/*', function (req, res, next) {
+        debug('serveStaticContent ' + req.path);
+        if (utils.isPublic(req.path)) {
+            return utils.pipe(req, res, 'content' + req.path);
+        }
+        res.status(404).json({ message: 'Not found.' });
+    });
+    app.use(basePath + '/content', serveStaticContent);
 
     app.use(wicked.correlationIdHandler());
 
@@ -85,7 +90,6 @@ app.initApp = function (authServerConfig, callback) {
     });
     app.use(logger('{"date":":date[clf]","method":":method","url":":url","remote-addr":":remote-addr","version":":http-version","status":":status","content-length":":res[content-length]","referrer":":referrer","response-time":":response-time","correlation-id":":correlation-id"}'));
 
-    //const csrfProtection = csurf({ cookie: true });
     app.use(bodyParser.json());
     app.use(bodyParser.urlencoded({ extended: false }));
 
@@ -133,26 +137,30 @@ app.initApp = function (authServerConfig, callback) {
             externalUrlBase: app.get('external_url'),
             basePath: app.get('base_path')
         };
-        info(`Activating auth method ${authMethod.name} with type ${authMethod.type}.`);
+        info(`Activating auth method ${authMethod.name} with type ${authMethod.type}, at ${authUri}.`);
+        let idp = null;
         switch (authMethod.type) {
             case "local":
-                app.use(authUri, new LocalIdP(basePath, authMethod.name, authMethod.config, options).getRouter());
+                idp = new LocalIdP(basePath, authMethod.name, authMethod.config, options);
                 break;
             case "dummy":
-                app.use(authUri, new DummyIdP(basePath, authMethod.name, authMethod.config, options).getRouter());
+                idp = new DummyIdP(basePath, authMethod.name, authMethod.config, options);
                 break;
             case "github":
-                app.use(authUri, new GithubIdP(basePath, authMethod.name, authMethod.config, options).getRouter());
+                idp = new GithubIdP(basePath, authMethod.name, authMethod.config, options);
                 break;
             case "google":
-                app.use(authUri, new GoogleIdP(basePath, authMethod.name, authMethod.config, options).getRouter());
+                idp = new GoogleIdP(basePath, authMethod.name, authMethod.config, options);
                 break;
             case "twitter":
-                app.use(authUri, new TwitterIdP(basePath, authMethod.name, authMethod.config, options).getRouter());
+                idp = new TwitterIdP(basePath, authMethod.name, authMethod.config, options);
                 break;
             default:
                 error('ERROR: Unknown authMethod type ' + authMethod.type);
                 break;
+        }
+        if (idp) {
+            app.use(authUri, idp.getRouter());
         }
     }
 
@@ -191,8 +199,7 @@ app.initApp = function (authServerConfig, callback) {
 
     // catch 404 and forward to error handler
     app.use(function (req, res, next) {
-        const err = new Error('Not Found');
-        err.status = 404;
+        const err = new StatusError(404, 'Not Found');
         next(err);
     });
 
@@ -231,5 +238,3 @@ app.initApp = function (authServerConfig, callback) {
 
     callback(null);
 };
-
-module.exports = app;

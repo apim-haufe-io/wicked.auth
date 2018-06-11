@@ -1,54 +1,67 @@
 'use strict';
 
-const async = require('async');
+import * as async from 'async';
+import { AuthRequest, AuthResponse, OidcProfile, EmailMissingHandler, ExpressHandler, IdentityProvider, AuthResponseCallback, TokenRequest, AccessTokenCallback } from './types';
+import { profileStore } from './profile-store'
 const { debug, info, warn, error } = require('portal-env').Logger('portal-auth:utils');
-const wicked = require('wicked-sdk');
-const oauth2 = require('../kong-oauth2/oauth2');
-const tokens = require('../kong-oauth2/tokens');
+const wicked: any = require('wicked-sdk');
+
+import { oauth2 } from '../kong-oauth2/oauth2';
+import { tokens } from '../kong-oauth2/tokens';
+
 const Router = require('express').Router;
 const qs = require('querystring');
 
-const utils = require('./utils');
-const utilsOAuth2 = require('./utils-oauth2');
-const { failMessage, failError, failOAuth, makeError } = require('./utils-fail');
-const profileStore = require('./profile-store');
+import { utils } from './utils';
+import { utilsOAuth2 } from './utils-oauth2';
+import { failMessage, failError, failOAuth, makeError } from './utils-fail';
+import { WickedApiScopes, WickedGrantCollection, WickedGrant } from './wicked-types';
 
 const ERROR_TIMEOUT = 500; // ms
 
-function GenericOAuth2Router(basePath, authMethodId) {
+export class GenericOAuth2Router {
 
-    const oauthRouter = new Router();
-    const state = {};
-    const instance = this;
+    protected authMethodId: string;
+    protected oauthRouter: any;
+    protected idp: IdentityProvider;
 
-    this.getRouter = () => {
-        return oauthRouter;
+    constructor(basePath: string, authMethodId: string) {
+        debug(`constructor(${basePath}, ${authMethodId})`);
+        this.oauthRouter = new Router();
+        this.authMethodId = authMethodId;
+
+        this.initOAuthRouter();
+    }
+
+    public getRouter() {
+        return this.oauthRouter;
     };
 
-    this.initIdP = (idp) => {
-        state.idp = idp;
+    public initIdP(idp: IdentityProvider): void {
+        debug(`initIdP(${idp.getType()})`);
+        this.idp = idp;
         // Configure additional end points (if applicable). JavaScript is sick.
         const endpoints = idp.endpoints();
         const standardEndpoints = [
             {
                 method: 'get',
                 uri: '/verify/:verificationId',
-                handler: instance.createVerifyHandler(authMethodId)
+                handler: this.createVerifyHandler(this.authMethodId)
             },
             {
                 method: 'post',
                 uri: '/verify',
-                handler: instance.createVerifyPostHandler(authMethodId)
+                handler: this.createVerifyPostHandler(this.authMethodId)
             },
             {
                 method: 'get',
                 uri: '/verifyemail',
-                handler: instance.createVerifyEmailHandler(authMethodId)
+                handler: this.createVerifyEmailHandler(this.authMethodId)
             },
             {
                 method: 'post',
                 uri: '/verifyemail',
-                handler: instance.createVerifyEmailPostHandler(authMethodId)
+                handler: this.createVerifyEmailPostHandler(this.authMethodId)
             },
         ];
         // Spread operator, fwiw.
@@ -60,19 +73,19 @@ function GenericOAuth2Router(basePath, authMethodId) {
             if (!e.handler)
                 throw new Error('initIdP: Invalid end point definition, "handler" is null): ' + JSON.stringify(e));
             if (e.middleware)
-                oauthRouter[e.method](e.uri, e.middleware, e.handler);
+                this.oauthRouter[e.method](e.uri, e.middleware, e.handler);
             else
-                oauthRouter[e.method](e.uri, e.handler);
+                this.oauthRouter[e.method](e.uri, e.handler);
         }
-    };
+    }
 
-    this.createVerifyHandler = (authMethodId) => {
+    public createVerifyHandler(authMethodId: string): ExpressHandler {
         debug(`createVerifyEmailHandler(${authMethodId})`);
         // GET /verify/:verificationId
         return (req, res, next) => {
             debug(`verifyEmailHandler(${authMethodId})`);
             const verificationId = req.params.verificationId;
-    
+
             wicked.apiGet(`/verifications/${verificationId}`, (err, verificationInfo) => {
                 if (err && (err.statusCode === 404 || err.status === 404))
                     return setTimeout(failMessage, ERROR_TIMEOUT, 404, 'The given verification ID is not valid.', next);
@@ -80,39 +93,41 @@ function GenericOAuth2Router(basePath, authMethodId) {
                     return failError(500, err, next);
                 if (!verificationInfo)
                     return setTimeout(failMessage, ERROR_TIMEOUT, 404, 'The given verification ID is not valid.', next);
-    
+
                 const viewModel = utils.createViewModel(req, authMethodId);
                 viewModel.email = verificationInfo.email;
                 viewModel.id = verificationId;
-    
+
                 switch (verificationInfo.type) {
                     case "email":
                         return res.render('verify_email', viewModel);
-    
+
                     case "lostpassword":
                         return res.render('verify_password_reset', viewModel);
-    
+
                     default:
                         return failMessage(500, `Unknown verification type ${verificationInfo.type}`, next);
                 }
             });
         };
-    };
-    
-    this.createVerifyPostHandler = (authMethodId) => {
+    }
+
+    public createVerifyPostHandler(authMethodId): ExpressHandler {
         debug(`createVerifyPostHandler(${authMethodId})`);
-        return (req, res, next) => {
+        return function (req, res, next): void {
             debug(`verifyPostHandler(${authMethodId})`);
-    
+
             const body = req.body;
             const expectedCsrfToken = utils.getAndDeleteCsrfToken(req);
             const csrfToken = body._csrf;
             const verificationId = body.verification_id;
             const verificationType = body.type;
-    
-            if (!csrfToken || expectedCsrfToken !== csrfToken)
-                return setTimeout(failMessage, ERROR_TIMEOUT, 403, 'CSRF validation failed.', next);
-    
+
+            if (!csrfToken || expectedCsrfToken !== csrfToken) {
+                setTimeout(failMessage, ERROR_TIMEOUT, 403, 'CSRF validation failed.', next);
+                return;
+            }
+
             wicked.apiGet(`/verifications/${verificationId}`, (err, verificationInfo) => {
                 if (err && (err.statusCode === 404 || err.status === 404))
                     return setTimeout(failMessage, ERROR_TIMEOUT, 404, 'The given verification ID is not valid.', next);
@@ -121,7 +136,7 @@ function GenericOAuth2Router(basePath, authMethodId) {
                 if (!verificationInfo)
                     return setTimeout(failMessage, ERROR_TIMEOUT, 404, 'The given verification ID is not valid.', next);
                 debug(`Successfully retrieved verification info for user ${verificationInfo.userId} (${verificationInfo.email})`);
-    
+
                 if (verificationType !== verificationInfo.type)
                     return failMessage(500, 'Verification information found, does not match form data (type)', next);
                 switch (verificationType) {
@@ -131,10 +146,10 @@ function GenericOAuth2Router(basePath, authMethodId) {
                             if (err)
                                 return setTimeout(failError, ERROR_TIMEOUT, 500, err, next);
                             info(`Successfully patched user, validated email for user ${verificationInfo.userId} (${verificationInfo.email})`);
-    
+
                             // Pop off a deletion of the verification, but don't wait for it.
                             wicked.apiDelete(`/verifications/${verificationId}`, (err) => { if (err) error(err); });
-    
+
                             // Success
                             const viewModel = utils.createViewModel(req, authMethodId);
                             return res.render('verify_email_post', viewModel);
@@ -149,51 +164,53 @@ function GenericOAuth2Router(basePath, authMethodId) {
                         wicked.apiPatch(`/users/${verificationInfo.userId}`, { password: password }, (err, userInfo) => {
                             if (err)
                                 return setTimeout(failError, ERROR_TIMEOUT, 500, err, next);
-    
+
                             info(`Successfully patched user, changed password for user ${verificationInfo.userId} (${verificationInfo.email})`);
-    
+
                             // Pop off a deletion of the verification, but don't wait for it.
                             wicked.apiDelete(`/verifications/${verificationId}`, (err) => { if (err) error(err); });
-    
+
                             // Success
                             const viewModel = utils.createViewModel(req, authMethodId);
                             return res.render('verify_password_reset_post', viewModel);
                         });
                         break;
-    
+
                     default:
                         return setTimeout(failMessage, ERROR_TIMEOUT, 500, `Unknown verification type ${verificationType}`, next);
                 }
             });
         };
     };
-    
-    this.createForgotPasswordHandler = (authMethodId) => {
+
+    public createForgotPasswordHandler(authMethodId): ExpressHandler {
         debug(`createForgotPasswordHandler(${authMethodId})`);
         return (req, res, next) => {
             debug(`forgotPasswordHandler(${authMethodId})`);
-    
+
             const viewModel = utils.createViewModel(req, authMethodId);
             return res.render('forgot_password', viewModel);
         };
-    };
-        
-    this.createForgotPasswordPostHandler = (authMethodId) => {
+    }
+
+    public createForgotPasswordPostHandler(authMethodId): ExpressHandler {
         debug(`createForgotPasswordPostHandler(${authMethodId})`);
-        return (req, res, next) => {
+        return function (req, res, next): void {
             debug(`forgotPasswordPostHandler(${authMethodId})`);
-    
+
             const body = req.body;
             const expectedCsrfToken = utils.getAndDeleteCsrfToken(req);
             const csrfToken = body._csrf;
             const email = body.email;
-    
-            if (!csrfToken || expectedCsrfToken !== csrfToken)
-                return setTimeout(failMessage, ERROR_TIMEOUT, 403, 'CSRF validation failed.', next);
+
+            if (!csrfToken || expectedCsrfToken !== csrfToken) {
+                setTimeout(failMessage, ERROR_TIMEOUT, 403, 'CSRF validation failed.', next);
+                return;
+            }
             let emailValid = /.+@.+/.test(email);
             if (emailValid) {
                 // Try to retrieve the user from the database
-                wicked.apiGet(`/users?email=${qs.escape(email)}`, (err, userInfoList) => {
+                wicked.apiGet(`/users?email=${qs.escape(email)}`, function (err, userInfoList) {
                     if (err)
                         return error(err);
                     if (!Array.isArray(userInfoList))
@@ -203,12 +220,12 @@ function GenericOAuth2Router(basePath, authMethodId) {
                     // OK, we have exactly one user
                     const userInfo = userInfoList[0];
                     info(`Issuing password reset request for user ${userInfo.id} (${userInfo.email})`);
-    
+
                     // Fire off the verification/password reset request creation (the mailer will take care
                     // of actually sending the emails).
                     const authUrl = utils.getExternalUrl();
                     const resetLink = `${authUrl}/${authMethodId}/verify/{{id}}`;
-    
+
                     const verifInfo = {
                         type: 'lostpassword',
                         email: userInfo.email,
@@ -222,23 +239,23 @@ function GenericOAuth2Router(basePath, authMethodId) {
                     });
                 });
             }
-    
+
             // No matter what happens, we will send the same page to the user.
             const viewModel = utils.createViewModel(req, authMethodId);
             res.render('forgot_password_post', viewModel);
         };
-    };
-    
-    this.createVerifyEmailHandler = (authMethodId) => {
+    }
+
+    public createVerifyEmailHandler(authMethodId): ExpressHandler {
         debug(`createVerifyEmailHandler(${authMethodId})`);
         return (req, res, next) => {
             debug(`verifyEmailHandler(${authMethodId})`);
-    
+
             // Steps:
             // 1. Verify that the user is logged in
             // 2. Display a small form
             // 3. Let user click a button and we will send an email (via portal-mailer)
-    
+
             if (!utils.isLoggedIn(req, authMethodId)) {
                 // User is not logged in; make sure we do that first
                 const thisUri = req.originalUrl;
@@ -246,33 +263,33 @@ function GenericOAuth2Router(basePath, authMethodId) {
                 return res.redirect(redirectUri);
             }
             // const redirectUri = `${req.app.get('base_url')}${authMethodId}/verifyemail`;
-    
+
             debug(`verifyEmailHandler(${authMethodId}): User is correctly logged in.`);
-    
+
             const viewModel = utils.createViewModel(req, authMethodId);
             viewModel.profile = req.session[authMethodId].authResponse.profile;
-    
+
             return res.render('verify_email_request', viewModel);
         };
     };
-    
-    this.createVerifyEmailPostHandler = (authMethodId) => {
+
+    createVerifyEmailPostHandler(authMethodId): ExpressHandler {
         debug(`createVerifyEmailPostHandler(${authMethodId})`);
         return (req, res, next) => {
             debug(`verifyEmailPostHandler(${authMethodId})`);
-    
+
             const body = req.body;
             const expectedCsrfToken = utils.getAndDeleteCsrfToken(req);
             const csrfToken = body._csrf;
-    
+
             if (!utils.isLoggedIn(req, authMethodId))
                 return failMessage(403, 'You must be logged in to request email validation.', next);
             if (!csrfToken || expectedCsrfToken !== csrfToken)
                 return setTimeout(failMessage, ERROR_TIMEOUT, 403, 'CSRF validation failed.', next);
-    
+
             const profile = utils.getProfile(req, authMethodId);
             const email = profile.email;
-    
+
             // If we're here, the user is not trusted (as we're asking for a validation)
             const trustUsers = false;
             utils.createVerificationRequest(trustUsers, authMethodId, email, (err) => {
@@ -281,13 +298,13 @@ function GenericOAuth2Router(basePath, authMethodId) {
                 return res.render('verify_email_request_confirm', utils.createViewModel(req, authMethodId));
             });
         };
-    };
-    
-    this.createEmailMissingHandler = (authMethodId, continueAuthenticate) => {
+    }
+
+    createEmailMissingHandler(authMethodId, continueAuthenticate): EmailMissingHandler {
         debug(`createEmailMissingHandler(${authMethodId})`);
         return (req, res, next, customId) => {
             debug(`emailMissingHandler(${authMethodId})`);
-    
+
             utils.getUserByCustomId(customId, (err, userInfo) => {
                 if (err)
                     return failError(500, err, next);
@@ -299,163 +316,246 @@ function GenericOAuth2Router(basePath, authMethodId) {
                 return res.render('email_missing', viewModel);
             });
         };
-    };
-    
-    this.createEmailMissingPostHandler = (authMethodId, continueAuthenticate) => {
+    }
+
+    createEmailMissingPostHandler(authMethodId, continueAuthenticate) {
         debug(`createEmailMissingPostHandler(${authMethodId})`);
         return (req, res, next) => {
             debug(`emailMissingPostHandler(${authMethodId})`);
-    
+
             const body = req.body;
             const expectedCsrfToken = utils.getAndDeleteCsrfToken(req);
             const csrfToken = body._csrf;
-    
+
             if (!csrfToken || expectedCsrfToken !== csrfToken)
                 return setTimeout(failMessage, ERROR_TIMEOUT, 403, 'CSRF validation failed.', next);
-    
+
             const email = body.email;
             const email2 = body.email2;
-    
+
             if (!email || !email2)
                 return setTimeout(failMessage, ERROR_TIMEOUT, 400, 'Email address or confirmation not passed in.', next);
             if (email !== email2)
                 return setTimeout(failMessage, ERROR_TIMEOUT, 400, 'Email address and confirmation of email address do not match', next);
-    
+
             // Pass back email address to calling IdP (e.g. Twitter)
             return continueAuthenticate(req, res, next, email);
         };
-    };
-    
-    const initAuthRequest = (req) => {
-        debug(`initAuthRequest(${authMethodId})`);
+    }
+
+    private initAuthRequest(req): AuthRequest {
+        debug(`initAuthRequest(${this.authMethodId})`);
         if (!req.session)
             req.session = {};
-        if (!req.session[authMethodId])
-            req.session[authMethodId] = { authRequest: {} };
+        if (!req.session[this.authMethodId])
+            req.session[this.authMethodId] = { authRequest: {} };
         else // Reset the authRequest even if it's present
-            req.session[authMethodId].authRequest = {};
-        const authRequest = req.session[authMethodId].authRequest;
+            req.session[this.authMethodId].authRequest = {};
+        const authRequest = req.session[this.authMethodId].authRequest;
         return authRequest;
     };
 
-    // OAuth2 end point Authorize
-    oauthRouter.get('/api/:apiId/authorize', /*csrfProtection,*/ function (req, res, next) {
-        const apiId = req.params.apiId;
-        debug(`/api/${apiId}/authorize`);
+    private initOAuthRouter() {
+        debug(`initOAuthRouter(${this.authMethodId})`);
 
-        const clientId = req.query.client_id;
-        const responseType = req.query.response_type;
-        const givenRedirectUri = req.query.redirect_uri;
-        const givenState = req.query.state;
-        const givenScope = req.query.scope;
-        const givenPrompt = req.query.prompt;
+        const instance = this;
 
-        const authRequest = initAuthRequest(req);
-        authRequest.api_id = apiId;
-        authRequest.client_id = clientId;
-        authRequest.response_type = responseType;
-        authRequest.redirect_uri = givenRedirectUri;
-        authRequest.state = givenState;
-        authRequest.scope = givenScope;
-        authRequest.prompt = givenPrompt;
+        // OAuth2 end point Authorize
+        this.oauthRouter.get('/api/:apiId/authorize', /*csrfProtection,*/ function (req, res, next) {
+            const apiId = req.params.apiId;
+            debug(`/api/${apiId}/authorize`);
 
-        // Validate parameters first now (TODO: This is pbly feasible centrally,
-        // it will be the same for all Auth Methods).
-        utilsOAuth2.validateAuthorizeRequest(authRequest, function (err, validationResult) {
-            if (err) {
-                return next(err);
+            const clientId = req.query.client_id;
+            const responseType = req.query.response_type;
+            const givenRedirectUri = req.query.redirect_uri;
+            const givenState = req.query.state;
+            const givenScope = req.query.scope;
+            const givenPrompt = req.query.prompt;
+
+            const authRequest = instance.initAuthRequest(req);
+            authRequest.api_id = apiId;
+            authRequest.client_id = clientId;
+            authRequest.response_type = responseType;
+            authRequest.redirect_uri = givenRedirectUri;
+            authRequest.state = givenState;
+            authRequest.scope = givenScope;
+            authRequest.prompt = givenPrompt;
+
+            // Validate parameters first now (TODO: This is pbly feasible centrally,
+            // it will be the same for all Auth Methods).
+            utilsOAuth2.validateAuthorizeRequest(authRequest, function (err, validationResult) {
+                if (err) {
+                    return next(err);
+                }
+
+                // Is it a trusted application?
+                authRequest.trusted = validationResult.trusted;
+
+                utilsOAuth2.validateApiScopes(
+                    authRequest.api_id,
+                    authRequest.scope,
+                    authRequest.trusted,
+                    (err, scopeValidationResult) => {
+                        if (err)
+                            return next(err);
+
+                        // Rewrite the scope to an array which resulted from the validation.
+                        // Note that this is not the granted scopes, but the scopes that this
+                        // application requests, and we have (only) validated that the scopes
+                        // are present. If the application is not trusted, it may be that we
+                        // will ask the user to grant the scope rights to the application later
+                        // on.
+                        authRequest.scope = scopeValidationResult.validatedScopes;
+                        // Did we add/change the scopes passed in?
+                        authRequest.scopesDiffer = scopeValidationResult.scopesDiffer;
+
+                        let isLoggedIn = utils.isLoggedIn(req, instance.authMethodId);
+                        // Borrowed from OpenID Connect, check for prompt request for implicit grant
+                        // http://openid.net/specs/openid-connect-implicit-1_0.html#RequestParameters
+                        if (authRequest.response_type === 'token') {
+                            switch (authRequest.prompt) {
+                                case 'none':
+                                    if (!isLoggedIn)
+                                        return failOAuth(401, 'login_required', 'user must be logged in interactively, cannot authorize without logged in user.', next);
+                                    return instance.authorizeFlow(req, res, next);
+                                case 'login':
+                                    // Force login; wipe session data
+                                    if (isLoggedIn) {
+                                        delete req.session[instance.authMethodId].authResponse;
+                                        isLoggedIn = false;
+                                    }
+                                    break;
+                            }
+                        }
+                        // We're fine. Check for pre-existing sessions.
+                        if (isLoggedIn) {
+                            const authResponse = req.session[instance.authMethodId].authResponse;
+                            return instance.continueAuthorizeFlow(req, res, next, authResponse);
+                        }
+
+                        // Not logged in, or forced login
+                        return instance.idp.authorizeWithUi(req, res, authRequest);
+                    });
+            });
+        });
+
+        // !!!
+        this.oauthRouter.post('/api/:apiId/token', function (req, res, next) {
+            const apiId = req.params.apiId;
+            debug(`/api/${apiId}/token`);
+            // Full switch/case on things to do, for all flows
+            // - Client Credentials -> Go to Kong and get a token
+            // - Authorization Code -> Go to Kong and get a token
+            // - Resource Owner Password Grant --> Check username/password/client id/secret and get a token
+            // - Refresh Token --> Check validity of user and client --> Get a token
+
+            const tokenRequest = utilsOAuth2.makeTokenRequest(req, apiId, instance.authMethodId);
+            utilsOAuth2.validateTokenRequest(tokenRequest, function (err) {
+                if (err)
+                    return next(err);
+                // Ok, we know we have something which could work (all data)
+                const handleTokenResult = function (err, accessToken) {
+                    if (err)
+                        return failError(400, err, next);
+                    if (accessToken.error)
+                        return res.status(400).json(accessToken);
+                    if (accessToken.session_data) {
+                        profileStore.registerTokenOrCode(accessToken, tokenRequest.api_id, accessToken.session_data, (err) => {
+                            if (err)
+                                return failError(500, err, next);
+                            delete accessToken.session_data;
+                            return res.status(200).json(accessToken);
+                        });
+                    } else {
+                        return res.status(200).json(accessToken);
+                    }
+                };
+
+                switch (tokenRequest.grant_type) {
+                    case 'client_credentials':
+                        // This is generically available for most auth methods
+                        return utilsOAuth2.tokenClientCredentials(tokenRequest, handleTokenResult);
+                    case 'authorization_code':
+                        // Use the generic version here as well
+                        return utilsOAuth2.tokenAuthorizationCode(tokenRequest, handleTokenResult);
+                    case 'password':
+                        // This has to be done specifically
+                        return instance.tokenPasswordGrant(tokenRequest, handleTokenResult);
+                    case 'refresh_token':
+                        // This as well
+                        return instance.tokenRefreshToken(tokenRequest, handleTokenResult);
+                }
+                // This should not be possible
+                return failOAuth(400, 'unsupported_grant_type', `invalid grant type ${tokenRequest.grant_type}`, next);
+            });
+        });
+
+        this.oauthRouter.post('/register', (req, res, next) => {
+            // ...
+            debug(`/register`);
+
+            // First, check the registration nonce
+            const sessionData = req.session[instance.authMethodId];
+            const nonce = req.body.nonce;
+            if (!nonce)
+                return failMessage(400, 'Registration nonce missing.', next);
+            if (nonce !== sessionData.registrationNonce)
+                return failMessage(400, 'Registration nonce mismatch.', next);
+
+            // OK, this looks fine.
+            const userId = sessionData.authResponse.userId;
+            const poolId = sessionData.authResponse.registrationPool;
+
+            // The backend validates the data
+            wicked.apiPut(`/registrations/pools/${poolId}/users/${userId}`, req.body, (err) => {
+                if (err)
+                    return failError(500, err, next);
+
+                // Go back to the registration flow now
+                return instance.registrationFlow(poolId, req, res, next);
+            });
+        });
+
+        /**
+         * End point for interactive login without using the OAuth2 mechanisms; this
+         * is used in cases where we need a logged in user, but there is none; e.g.
+         * scope management, or verifying email addresses.
+         * 
+         * This end point displays the provider specific login page, and requires
+         * a redirect URL to get back to (which must be internal to this application).
+         * In short: Use this when you need to make sure that you have a logged in user
+         * and just need to redirect back to a page when it's done.
+         * 
+         * Parameters: Query parameter "redirect_uri", which takes a relative path
+         * to this application (including the base_path).
+         */
+        this.oauthRouter.get('/login', (req, res, next) => {
+            debug('GET /login - internal login');
+
+            // Verify parameters
+            const redirectUri = req.query.redirect_uri;
+            if (!redirectUri)
+                return failMessage(400, 'Missing redirect_uri query parameter.', next);
+
+            // Are we already logged in?
+            if (utils.isLoggedIn(req, instance.authMethodId)) {
+                // Yup, let's just redirect
+                return res.redirect(redirectUri);
             }
 
-            // Is it a trusted application?
-            authRequest.trusted = validationResult.trusted;
+            // We're not yet logged in; let's do that now
 
-            utilsOAuth2.validateApiScopes(
-                authRequest.api_id,
-                authRequest.scope,
-                authRequest.trusted,
-                (err, scopeValidationResult) => {
-                    if (err)
-                        return next(err);
+            // Remember we're in a "special mode", so let's create a special type
+            // of authRequest. The authRequest goes into the session.
+            const authRequest = instance.initAuthRequest(req);
+            authRequest.plain = true;
+            authRequest.redirect_uri = redirectUri;
 
-                    // Rewrite the scope to an array which resulted from the validation.
-                    // Note that this is not the granted scopes, but the scopes that this
-                    // application requests, and we have (only) validated that the scopes
-                    // are present. If the application is not trusted, it may be that we
-                    // will ask the user to grant the scope rights to the application later
-                    // on.
-                    authRequest.scope = scopeValidationResult.validatedScopes;
-                    // Did we add/change the scopes passed in?
-                    authRequest.scopesDiffer = scopeValidationResult.scopesDiffer;
-
-                    let isLoggedIn = utils.isLoggedIn(req, authMethodId);
-                    // Borrowed from OpenID Connect, check for prompt request for implicit grant
-                    // http://openid.net/specs/openid-connect-implicit-1_0.html#RequestParameters
-                    if (authRequest.response_type === 'token') {
-                        switch (authRequest.prompt) {
-                            case 'none':
-                                if (!isLoggedIn)
-                                    return failOAuth(401, 'login_required', 'user must be logged in interactively, cannot authorize without logged in user.', next);
-                                return authorizeFlow(req, res, next);
-                            case 'login':
-                                // Force login; wipe session data
-                                if (isLoggedIn) {
-                                    delete req.session[authMethodId].authResponse;
-                                    isLoggedIn = false;
-                                }
-                                break;
-                        }
-                    }
-                    // We're fine. Check for pre-existing sessions.
-                    if (isLoggedIn) {
-                        const authResponse = req.session[authMethodId].authResponse;
-                        return instance.continueAuthorizeFlow(req, res, next, authResponse);
-                    }
-
-                    // Not logged in, or forced login
-                    return state.idp.authorizeWithUi(req, res, authRequest);
-                });
+            return instance.idp.authorizeWithUi(req, res, authRequest);
         });
-    });
+    }
 
-    /**
-     * End point for interactive login without using the OAuth2 mechanisms; this
-     * is used in cases where we need a logged in user, but there is none; e.g.
-     * scope management, or verifying email addresses.
-     * 
-     * This end point displays the provider specific login page, and requires
-     * a redirect URL to get back to (which must be internal to this application).
-     * In short: Use this when you need to make sure that you have a logged in user
-     * and just need to redirect back to a page when it's done.
-     * 
-     * Parameters: Query parameter "redirect_uri", which takes a relative path
-     * to this application (including the base_path).
-     */
-    oauthRouter.get('/login', (req, res, next) => {
-        debug('GET /login - internal login');
-
-        // Verify parameters
-        const redirectUri = req.query.redirect_uri;
-        if (!redirectUri)
-            return failMessage(400, 'Missing redirect_uri query parameter.', next);
-
-        // Are we already logged in?
-        if (utils.isLoggedIn(req, authMethodId)) {
-            // Yup, let's just redirect
-            return res.redirect(redirectUri);
-        }
-
-        // We're not yet logged in; let's do that now
-
-        // Remember we're in a "special mode", so let's create a special type
-        // of authRequest. The authRequest goes into the session.
-        const authRequest = initAuthRequest(req);
-        authRequest.plain = true;
-        authRequest.redirect_uri = redirectUri;
-
-        return state.idp.authorizeWithUi(req, res, authRequest);
-    });
-
-    this.continueAuthorizeFlow = (req, res, next, authResponse) => {
+    public continueAuthorizeFlow(req, res, next, authResponse) {
         debug('continueAuthorizeFlow()');
         // This is what happens here:
         //
@@ -472,11 +572,11 @@ function GenericOAuth2Router(basePath, authMethodId) {
 
         // Extra TODO:
         // - Pass-through APIs do not create local users
-        checkUserFromAuthResponse(authResponse, (err, authResponse) => {
+        this.checkUserFromAuthResponse(authResponse, (err, authResponse) => {
             if (err)
                 return failMessage(500, 'checkUserFromAuthResponse: ' + err.message, next);
 
-            const authRequest = req.session[authMethodId].authRequest;
+            const authRequest = req.session[this.authMethodId].authRequest as AuthRequest;
             if (!authRequest)
                 return failMessage(500, 'Invalid state: authRequest is missing.', next);
 
@@ -487,9 +587,9 @@ function GenericOAuth2Router(basePath, authMethodId) {
                 // In this case, we don't need to check for any registrations; this is actually
                 // not possible here, as there is no API to check with. We'll just continue with
                 // redirecting to the redirect_uri in the authRequest (see GET /login).
-                req.session[authMethodId].authResponse = authResponse;
+                req.session[this.authMethodId].authResponse = authResponse;
 
-                debug(`continueAuthorizeFlow(${authMethodId}): Doing plain login/redirecting: ${authRequest.redirect_uri}`);
+                debug(`continueAuthorizeFlow(${this.authMethodId}): Doing plain login/redirecting: ${authRequest.redirect_uri}`);
                 return res.redirect(authRequest.redirect_uri);
             }
 
@@ -497,8 +597,8 @@ function GenericOAuth2Router(basePath, authMethodId) {
             if (!authRequest.api_id)
                 return failMessage(500, 'Invalid state: API in authorization request is missing.', next);
 
-            const apiId = req.session[authMethodId].authRequest.api_id;
-            req.session[authMethodId].authResponse = authResponse;
+            const apiId = req.session[this.authMethodId].authRequest.api_id;
+            req.session[this.authMethodId].authResponse = authResponse;
 
             debug('Retrieving registration info...');
             // We have an identity now, do we need registrations?
@@ -512,104 +612,28 @@ function GenericOAuth2Router(basePath, authMethodId) {
                     if (authResponse.registrationPool)
                         delete authResponse.registrationPool;
                     // Nope, just go ahead; use the default Profile as profile
-                    authResponse.profile = utils.clone(authResponse.defaultProfile);
-                    return authorizeFlow(req, res, next);
+                    authResponse.profile = utils.clone(authResponse.defaultProfile) as OidcProfile;
+                    return this.authorizeFlow(req, res, next);
                 }
 
                 authResponse.registrationPool = poolId;
                 debug(`API requires registration with pool '${poolId}', starting registration flow`);
 
                 // We'll do the registrationFlow first then...
-                return registrationFlow(poolId, req, res, next);
+                return this.registrationFlow(poolId, req, res, next);
             });
         });
-    };
+    }
 
-    // !!!
-    oauthRouter.post('/api/:apiId/token', function (req, res, next) {
-        const apiId = req.params.apiId;
-        debug(`/api/${apiId}/token`);
-        // Full switch/case on things to do, for all flows
-        // - Client Credentials -> Go to Kong and get a token
-        // - Authorization Code -> Go to Kong and get a token
-        // - Resource Owner Password Grant --> Check username/password/client id/secret and get a token
-        // - Refresh Token --> Check validity of user and client --> Get a token
-
-        const tokenRequest = utilsOAuth2.makeTokenRequest(req, apiId, authMethodId);
-        utilsOAuth2.validateTokenRequest(tokenRequest, function (err, validationResult) {
-            if (err)
-                return next(err);
-            // Ok, we know we have something which could work (all data)
-            const handleTokenResult = function (err, accessToken) {
-                if (err)
-                    return failError(400, err, next);
-                if (accessToken.error)
-                    return res.status(400).json(accessToken);
-                if (accessToken.session_data) {
-                    profileStore.registerTokenOrCode(accessToken, tokenRequest.api_id, accessToken.session_data, (err) => {
-                        if (err)
-                            return failError(500, err, next);
-                        delete accessToken.session_data;
-                        return res.status(200).json(accessToken);
-                    });
-                } else {
-                    return res.status(200).json(accessToken);
-                }
-            };
-
-            switch (tokenRequest.grant_type) {
-                case 'client_credentials':
-                    // This is generically available for most auth methods
-                    return utilsOAuth2.tokenClientCredentials(tokenRequest, handleTokenResult);
-                case 'authorization_code':
-                    // Use the generic version here as well
-                    return utilsOAuth2.tokenAuthorizationCode(tokenRequest, handleTokenResult);
-                case 'password':
-                    // This has to be done specifically
-                    return tokenPasswordGrant(tokenRequest, handleTokenResult);
-                case 'refresh_token':
-                    // This as well
-                    return tokenRefreshToken(tokenRequest, handleTokenResult);
-            }
-            // This should not be possible
-            return failOAuth(400, 'unsupported_grant_type', `invalid grant type ${tokenRequest.grant_type}`, next);
-        });
-    });
-
-    oauthRouter.post('/register', (req, res, next) => {
-        // ...
-        debug(`/register`);
-
-        // First, check the registration nonce
-        const sessionData = req.session[authMethodId];
-        const nonce = req.body.nonce;
-        if (!nonce)
-            return failMessage(400, 'Registration nonce missing.', next);
-        if (nonce !== sessionData.registrationNonce)
-            return failMessage(400, 'Registration nonce mismatch.', next);
-
-        // OK, this looks fine.
-        const userId = sessionData.authResponse.userId;
-        const poolId = sessionData.authResponse.registrationPool;
-
-        // The backend validates the data
-        wicked.apiPut(`/registrations/pools/${poolId}/users/${userId}`, req.body, (err) => {
-            if (err)
-                return failError(500, err, next);
-
-            // Go back to the registration flow now
-            return registrationFlow(poolId, req, res, next);
-        });
-    });
 
     // =============================================
     // Helper methods
     // =============================================
 
-    function registrationFlow(poolId, req, res, next) {
+    private registrationFlow(poolId, req, res, next) {
         debug('registrationFlow()');
 
-        const authResponse = req.session[authMethodId].authResponse;
+        const authResponse = req.session[this.authMethodId].authResponse;
         const userId = authResponse.userId;
         wicked.apiGet(`/registrations/pools/${poolId}/users/${userId}`, (err, regInfo) => {
             if (err && err.statusCode !== 404)
@@ -617,28 +641,28 @@ function GenericOAuth2Router(basePath, authMethodId) {
 
             if (!regInfo) {
                 // User does not have a registration here, we need to get one
-                return renderRegister(req, res, next);
+                return this.renderRegister(req, res, next);
             } else {
                 // User already has a registration, create a suitable profile
                 // TODO: Here we could check for not filled required fields
                 utilsOAuth2.makeOidcProfile(poolId, authResponse, regInfo, (err, profile) => {
                     if (err)
-                        return utils.failError(500, err, next);
+                        return failError(500, err, next);
                     // This will override the default user profile which is already
                     // present, but that is fine.
                     authResponse.profile = profile;
-                    return authorizeFlow(req, res, next);
+                    return this.authorizeFlow(req, res, next);
                 });
             }
         });
     }
 
-    function renderRegister(req, res, next) {
+    private renderRegister(req, res, next) {
         debug('renderRegister()');
         // The profile is not yet available, doh
         //const userProfile = req.session[authMethodId].authResponse.profile;
-        const authResponse = req.session[authMethodId].authResponse;
-        const apiId = req.session[authMethodId].authRequest.api_id;
+        const authResponse = req.session[this.authMethodId].authResponse;
+        const apiId = req.session[this.authMethodId].authRequest.api_id;
         debug(`API: ${apiId}`);
 
         utils.getPoolInfoByApi(apiId, (err, poolInfo) => {
@@ -647,13 +671,13 @@ function GenericOAuth2Router(basePath, authMethodId) {
             debug('Default profile:');
             debug(authResponse.defaultProfile);
 
-            const viewModel = utils.createViewModel(req, authMethodId);
+            const viewModel = utils.createViewModel(req, this.authMethodId);
             viewModel.userId = authResponse.userId;
             viewModel.customId = authResponse.customId;
             viewModel.defaultProfile = authResponse.defaultProfile;
             viewModel.poolInfo = poolInfo;
             const nonce = utils.createRandomId();
-            req.session[authMethodId].registrationNonce = nonce;
+            req.session[this.authMethodId].registrationNonce = nonce;
             viewModel.nonce = nonce;
 
             debug(viewModel);
@@ -664,64 +688,102 @@ function GenericOAuth2Router(basePath, authMethodId) {
     // This is called as soon as we are sure that we have a logged in user, and possibly
     // also a valid registration record (if applicable to the API). Now we also have to
     // check the scope of the authorization request, and possible run the scopeFlow.
-    function authorizeFlow(req, res, next) {
-        debug(`authorizeFlow(${authMethodId})`);
-        const authRequest = req.session[authMethodId].authRequest;
-        const userProfile = req.session[authMethodId].authResponse.profile;
+    private authorizeFlow(req, res, next) {
+        debug(`authorizeFlow(${this.authMethodId})`);
+        const authRequest = req.session[this.authMethodId].authRequest;
+        const userProfile = req.session[this.authMethodId].authResponse.profile;
 
         if (authRequest.trusted || authRequest.scope.length === 0) {
             // We have a trusted application, or an empty scope, we will not need to check for scope grants.
-            return authorizeFlow_Step2(req, res, next);
+            return this.authorizeFlow_Step2(req, res, next);
         }
 
-        return failMessage(500, 'Scope flow not yet implemented', next);
-        // return scopeFlow(req, res, next);
+        // return failMessage(500, 'Scope flow not yet implemented', next);
+        return this.scopeFlow(req, res, next);
     }
 
     // Here we validate the scope, check for whether the user has granted the scopes to the
     // application or not.
-    function scopeFlow(req, res, next) {
-        debug(`scopeFlow(${authMethodId}`);
+    private scopeFlow(req, res, next) {
+        debug(`scopeFlow(${this.authMethodId}`);
 
-        const authRequest = req.session[authMethodId].authRequest;
-        const authResponse = req.session[authMethodId].authResponse;
+        const instance = this;
+
+        const authRequest = req.session[this.authMethodId].authRequest;
+        const authResponse = req.session[this.authMethodId].authResponse;
 
         const apiId = authRequest.api_id;
         const clientId = authRequest.client_id;
+        const desiredScopesList = authRequest.scope; // ["scope1", "scope2",...]
         const userId = authResponse.userId;
 
         // Retrieve the application info for this client_id; the client_id is attached
         // to the subscription (glue between API, application and plan), but we get the
         // application back readily when asking for the subscription.
+        debug(`Getting subscription for client_id ${clientId}`);
         wicked.apiGet(`/subscriptions/${clientId}`, (err, subsInfo) => {
             if (err)
                 return failError(500, err, next);
             const appInfo = subsInfo.application;
             if (!appInfo)
                 return failMessage(500, 'scopeFlow: Could not retrieve application info from client_id', next);
+            debug(`Successfully retrieved subscription for client_id ${clientId}:`);
+            debug(subsInfo);
 
             // Let's check whether the user already has some grants
-            wicked.apiGet(`/grants/${userId}/applications/${appInfo.id}/apis/${apiId}`, (err, grant) => {
-                if (err && err.status !== 404)
-                    return failError(500, err, next);
-                if (err) // status 404
-                    grant = null; // will already be null though
-                
+            wicked.apiGet(`/grants/${userId}/applications/${appInfo.id}/apis/${apiId}`, (err, grantsInfo: WickedGrantCollection) => {
+                if (err && err.status !== 404 && err.statusCode !== 404)
+                    return failError(500, err, next); // Unexpected error
+                let grantsList = [] as WickedGrant[];
+                if (!err) // if err --> status 404
+                    grantsList = grantsInfo.items;
+
+                // Returns a list of scope names which need to be granted access to
+                const missingGrants = instance.diffGrants(grantsList, desiredScopesList);
+
+                if (missingGrants.length === 0) {
+                    debug('All grants are already given; continue authorize flow.');
+                    // We have all grants to scopes we need, we can continue
+                    return this.authorizeFlow_Step2(req, res, next);
+                }
+                debug('Missing grants:');
+                debug(missingGrants);
+
+                // We need additional scopes granted to the application; for that
+                // we need to gather some information on the API (get the list scopes).
+                utils.getApiInfo(apiId, (err, apiInfo) => {
+                    if (err)
+                        return failError(500, err, next);
+                    debug('Creating view model for grant scope form');
+
+                });
             });
         });
     }
 
-    function authorizeFlow_Step2(req, res, next) {
-        debug(`authorizeFlow_Step2(${authMethodId})`);
-        const authRequest = req.session[authMethodId].authRequest;
-        const userProfile = req.session[authMethodId].authResponse.profile;
+    private diffGrants(storedGrants: WickedGrant[], desiredScopesList: string[]): string[] {
+        debug('diffGrants()');
+        const missingGrants = [];
+        for (let i = 0; i < desiredScopesList.length; ++i) {
+            const scope = desiredScopesList[i];
+            let grantedScope = storedGrants.find(g => g.scope === scope);
+            if (!grantedScope)
+                missingGrants.push(scope);
+        }
+        return missingGrants;
+    }
+
+    private authorizeFlow_Step2(req, res, next) {
+        debug(`authorizeFlow_Step2(${this.authMethodId})`);
+        const authRequest = req.session[this.authMethodId].authRequest;
+        const userProfile = req.session[this.authMethodId].authResponse.profile;
         debug('/authorize/login: Calling authorization end point.');
         oauth2.authorize({
             response_type: authRequest.response_type,
             authenticated_userid: userProfile.sub,
             api_id: authRequest.api_id,
             client_id: authRequest.client_id,
-            auth_method: req.app.get('server_name') + ':' + authMethodId,
+            auth_method: req.app.get('server_name') + ':' + this.authMethodId,
             scope: authRequest.scope
         }, function (err, redirectUri) {
             debug('/authorize/login: Authorization end point returned.');
@@ -742,8 +804,9 @@ function GenericOAuth2Router(basePath, authMethodId) {
         });
     }
 
-    function tokenPasswordGrant(tokenRequest, callback) {
+    private tokenPasswordGrant(tokenRequest: TokenRequest, callback: AccessTokenCallback): void {
         debug('tokenPasswordGrant()');
+        const instance = this;
         // Let's validate the subscription first...
         utilsOAuth2.validateSubscription(tokenRequest.client_id, tokenRequest.api_id, function (err, validationResult) {
             if (err)
@@ -759,14 +822,15 @@ function GenericOAuth2Router(basePath, authMethodId) {
                 // Update the scopes
                 tokenRequest.scope = validatedScopes.validatedScopes;
 
-                state.idp.authorizeByUserPass(tokenRequest.username, tokenRequest.password, (err, authResponse) => {
+                instance.idp.authorizeByUserPass(tokenRequest.username, tokenRequest.password, (err, authResponse) => {
                     if (err) {
                         // Don't answer wrong logins immediately please.
                         // TODO: The error message must be IdP specific, can be some other type
                         // of error than just wrong username or password.
-                        return setTimeout(() => {
+                        setTimeout(() => {
                             return failOAuth(err.statusCode, 'invalid_request', 'invalid username or password', callback);
                         }, 500);
+                        return;
                     }
 
                     // TODO: In the LDAP case, the ROPG may work even if the user has not logged
@@ -774,12 +838,13 @@ function GenericOAuth2Router(basePath, authMethodId) {
                     // be created on the fly here, and possibly also needs a registration done
                     // automatically, if the API needs a registration. If not, it's fine as is, but
                     // the user needs a dedicated wicked local user (with a "sub" == user id)
-                    checkUserFromAuthResponse(authResponse, (err, authResponse) => {
+                    instance.checkUserFromAuthResponse(authResponse, (err, authResponse) => {
                         if (err) {
                             // TODO: Rethink error messages and such.
-                            return setTimeout(() => {
+                            setTimeout(() => {
                                 return failOAuth(err.statusCode, 'invalid_request', 'could not unify auth response', callback);
                             }, 500);
+                            return;
                         }
 
                         // TODO: Check registration status - This can only work for APIs which need
@@ -791,14 +856,14 @@ function GenericOAuth2Router(basePath, authMethodId) {
                         // This was fine. Now check if we can issue a token.
                         tokenRequest.authenticated_userid = authResponse.userId;
                         tokenRequest.session_data = authResponse.profile;
-                        oauth2.token(tokenRequest, callback);
+                        return oauth2.token(tokenRequest, callback);
                     });
                 });
             });
         });
     }
 
-    function checkUserFromAuthResponse(authResponse, callback) {
+    private checkUserFromAuthResponse(authResponse: AuthResponse, callback: AuthResponseCallback) {
         // The Auth response contains the default profile, which may or may not
         // match the stored profile in the wicked database. Plus that we might need to
         // create a federated user record in case we have a good valid 3rd party user,
@@ -813,7 +878,7 @@ function GenericOAuth2Router(basePath, authMethodId) {
                 // This just fills userId.
                 // The rest is done when handling the registrations (see
                 // registrationFlow()).
-                const oidcProfile = utilsOAuth2.wickedUserInfoToOidcProfileSync(userInfo);
+                const oidcProfile = utilsOAuth2.wickedUserInfoToOidcProfile(userInfo) as OidcProfile;
                 authResponse.userId = userId;
                 authResponse.profile = oidcProfile;
 
@@ -831,7 +896,7 @@ function GenericOAuth2Router(basePath, authMethodId) {
                     return callback(err);
                 if (!shortInfo) {
                     // Not found, we must create first
-                    createUserFromDefaultProfile(authResponse, (err, authResponse) => {
+                    this.createUserFromDefaultProfile(authResponse, (err, authResponse) => {
                         if (err)
                             return callback(err);
                         return loadWickedUser(authResponse.userId);
@@ -846,8 +911,9 @@ function GenericOAuth2Router(basePath, authMethodId) {
     }
 
     // Takes an authResponse, returns an authResponse
-    function createUserFromDefaultProfile(authResponse, callback) {
+    private createUserFromDefaultProfile(authResponse, callback) {
         debug('createUserFromDefaultProfile()');
+        const instance = this;
         // The defaultProfile MUST contain an email address.
         // The id of the new user is created by the API and returned here;
         // This is still an incognito user, name and such are amended later
@@ -857,7 +923,7 @@ function GenericOAuth2Router(basePath, authMethodId) {
             email: authResponse.defaultProfile.email,
             validated: authResponse.defaultProfile.email_verified
         };
-        wicked.apiPost('/users', userCreateInfo, (err, userInfo) => {
+        wicked.apiPost('/users', userCreateInfo, function (err, userInfo) {
             if (err) {
                 error('createUserFromDefaultProfile: POST to /users failed.');
                 error(err);
@@ -871,7 +937,7 @@ function GenericOAuth2Router(basePath, authMethodId) {
             // That we do asynchronously and return immediately without waiting for that.
             if (!userCreateInfo.validated) {
                 info(`Creating email verification request for email ${userCreateInfo.email}...`);
-                utils.createVerificationRequest(false, authMethodId, userCreateInfo.email, (err) => {
+                utils.createVerificationRequest(false, instance.authMethodId, userCreateInfo.email, (err) => {
                     if (err) {
                         error(`Creating email verification request for email ${userCreateInfo.email} failed`);
                         error(err);
@@ -886,8 +952,9 @@ function GenericOAuth2Router(basePath, authMethodId) {
         });
     }
 
-    function tokenRefreshToken(tokenRequest, callback) {
+    private tokenRefreshToken(tokenRequest, callback) {
         debug('tokenRefreshToken()');
+        const instance = this;
         // Client validation and all that stuff can be done in the OAuth2 adapter,
         // but we still need to verify that the user for which the refresh token was
         // created is still a valid user.
@@ -902,7 +969,7 @@ function GenericOAuth2Router(basePath, authMethodId) {
             const userId = tokenInfo.authenticated_userid;
             if (!userId)
                 return failOAuth(500, 'server_error', 'could not correctly retrieve authenticated user id from refresh token', callback);
-            state.idp.checkRefreshToken(tokenInfo, (err, refreshCheckResult) => {
+            instance.idp.checkRefreshToken(tokenInfo, (err, refreshCheckResult) => {
                 if (err)
                     return failOAuth(500, 'server_error', 'checking the refresh token returned an unexpected error.', callback);
                 wicked.apiGet('users/' + userId, function (err, userInfo) {
@@ -910,17 +977,12 @@ function GenericOAuth2Router(basePath, authMethodId) {
                         return failOAuth(400, 'invalid_request', 'user associated with refresh token is not a valid user (anymore)', err, callback);
                     debug('wicked local user info:');
                     debug(userInfo);
-                    utilsOAuth2.wickedUserInfoToOidcProfile(userInfo, function (err, oidcProfile) {
-                        if (err)
-                            return failOAuth(500, 'server_error', 'could not convert wicked profile to OIDC profile', err, callback);
-                        tokenRequest.session_data = oidcProfile;
-                        // Now delegate to oauth2 adapter:
-                        oauth2.token(tokenRequest, callback);
-                    });
+                    const oidcProfile = utilsOAuth2.wickedUserInfoToOidcProfile(userInfo);
+                    tokenRequest.session_data = oidcProfile;
+                    // Now delegate to oauth2 adapter:
+                    oauth2.token(tokenRequest, callback);
                 });
             });
         });
     }
 }
-
-module.exports = GenericOAuth2Router;

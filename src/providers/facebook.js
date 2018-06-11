@@ -1,11 +1,11 @@
 'use strict';
-
+/*
 const { debug, info, warn, error } = require('portal-env').Logger('auth-passport:facebook');
 const passport = require('passport');
 const FacebookStrategy = require('passport-facebook');
 const request = require('request');
 
-const utils = require('../common/utils');
+import { utils } from '../common/utils';
 const { failMessage, failError, failOAuth, makeError } = require('../common/utils-fail');
 
 const facebook = require('express').Router();
@@ -90,8 +90,8 @@ function normalizeProfile(profile, accessToken, callback) {
             given_name: jsonBody.first_name,
             family_name: jsonBody.last_name,
             email: email,
-            email_verified: email_verified,
-            raw_profile: profile
+            email_verified: email_verified
+            // raw_profile: profile
         };
 
         return callback(null, userProfile);
@@ -99,3 +99,4 @@ function normalizeProfile(profile, accessToken, callback) {
 }
 
 module.exports = facebook;
+*/

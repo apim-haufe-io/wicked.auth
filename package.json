@@ -5,7 +5,8 @@
   "main": "bin/authz",
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1",
-    "start": "node bin/authz"
+    "build": "tsc && rm -rf ./dist/views && cp -rf ./src/views ./dist && cp -f package.json ./dist && rm -rf ./dist/assets && mkdir -p ./dist/assets/jquery && mkdir -p ./dist/assets/bootstrap && cp -rf ./node_modules/bootstrap/dist ./dist/assets/bootstrap && cp -rf ./node_modules/jquery/dist ./dist/assets/jquery && node ./dist/authz.js",
+    "start": "node ./dist/authz.js"
   },
   "repository": {
     "type": "git",
@@ -32,13 +33,13 @@
   },
   "homepage": "https://github.com/Haufe-Lexware/wicked.portal-auth",
   "dependencies": {
-    "async": "2.0.1",
+    "@types/node": "^10.3.2",
+    "async": "2.6.1",
     "body-parser": "1.15.2",
     "bootstrap": "3.3.7",
     "connect-redis": "3.3.2",
     "cookie-parser": "1.4.3",
     "cors": "2.7.1",
-    "csurf": "1.9.0",
     "debug": "2.2.0",
     "express": "4.15.3",
     "express-session": "1.15.3",
@@ -62,5 +63,8 @@
   "jshintConfig": {
     "node": true,
     "esversion": 6
+  },
+  "devDependencies": {
+    "@types/async": "^2.0.49"
   }
 }

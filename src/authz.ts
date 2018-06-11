@@ -2,14 +2,14 @@
 
 'use strict';
 
-const app = require('../app');
+import { app } from './app';
 const async = require('async');
 const { debug, info, warn, error } = require('portal-env').Logger('portal-auth:server');
 const http = require('http');
 const passport = require('passport');
 const wicked = require('wicked-sdk');
-const utils = require('../common/utils.js');
-
+import { utils } from './common/utils.js';
+import { WickedAuthServer } from './common/wicked-types';
 
 let authServerId = 'default';
 if (process.env.AUTH_SERVER_NAME) {
@@ -29,12 +29,6 @@ utils.init(app);
 
 var port = normalizePort(process.env.PORT || '3010');
 app.set('port', port);
-
-const google = require('../providers/google');
-const github = require('../providers/github');
-const twitter = require('../providers/twitter');
-const facebook = require('../providers/facebook');
-const adfs = require('../providers/adfs');
 
 /**
  * Create HTTP server.
@@ -58,7 +52,7 @@ async.series({
         throw err;
     }
 
-    const authServerConfig = results.authServerConfig;
+    const authServerConfig = results.authServerConfig as WickedAuthServer;
     // Initialize the externally visible URL as an app parameter
     if (!authServerConfig.config ||
         !authServerConfig.config.api ||
@@ -85,15 +79,6 @@ async.series({
 
         app.glob = wicked.getGlobals();
 
-
-        //console.log(app.authConfig);
-
-        // google.init(app, app.authConfig);
-        // github.init(app, app.authConfig);
-        // twitter.init(app, app.authConfig);
-        // facebook.init(app, app.authConfig);
-        // adfs.init(app, app.authConfig);
-
         // Simplest kind of serialization and deserialization
         passport.serializeUser(function (user, done) {
             done(null, user);
@@ -102,8 +87,6 @@ async.series({
         passport.deserializeUser(function (user, done) {
             done(null, user);
         });
-
-        //console.log('Kong OAuth2 Service: ' + wicked.getInternalKongOAuth2Url());
 
         // Now create the server
         server = http.createServer(app);

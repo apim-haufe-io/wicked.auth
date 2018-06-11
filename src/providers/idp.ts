@@ -1,26 +1,42 @@
 'use strict';
 
+import { GenericOAuth2Router } from '../common/generic-router';
+import { AuthRequest, EndpointDefinition, AuthResponseCallback, CheckRefreshCallback, AuthResponse, IdentityProvider, IdpOptions } from '../common/types';
 const { debug, info, warn, error } = require('portal-env').Logger('portal-auth:local');
 const Router = require('express').Router;
 
-const utils = require('../common/utils');
-const { failMessage, failError, failOAuth, makeError } = require('../common/utils-fail');
-
-const GenericOAuth2Router = require('../common/generic-router');
+import { utils } from '../common/utils';
+import { failMessage, failError, failOAuth, makeError } from '../common/utils-fail';
 
 /**
  * This is a sample of how an IdP must work to be able to integrate into
  * the generic OAuth2 workflow in generic.js
  */
-function IdP(basePath, authMethodId, authMethodConfig, options) {
+class IdP implements IdentityProvider {
 
-    const genericFlow = new GenericOAuth2Router(basePath, authMethodId);
+    private genericFlow: GenericOAuth2Router;
+    private basePath: string;
+    private authMethodId: string;
+    private options: IdpOptions;
+    
+    constructor(basePath: string, authMethodId: string, authMethodConfig: any, options: IdpOptions) {
+        debug(`constructor(${basePath}, ${authMethodId},...)`);
+        this.genericFlow = new GenericOAuth2Router(basePath, authMethodId);
 
-    const instance = this;
+        this.basePath = basePath;
+        this.authMethodId = authMethodId;
+        // this.authMethodConfig = authMethodConfig;
 
-    this.getRouter = () => {
-        return genericFlow.getRouter();
-    };
+        this.genericFlow.initIdP(this);
+    }
+
+    public getType() {
+        return "idp";
+    }
+
+    public getRouter() {
+        return this.genericFlow.getRouter();
+    }
 
     /**
      * In case the user isn't already authenticated, this method will
@@ -35,7 +51,7 @@ function IdP(basePath, authMethodId, authMethodConfig, options) {
      * in case those are needed (such as for displaying information on the API
      * or similar).
      */
-    this.authorizeWithUi = (req, res, authRequest) => {
+    public authorizeWithUi(req, res, authRequest: AuthRequest) {
         // Do your thing...
         // Render a login mask...
         // Or redirect to a 3rd party IdP, like Google
@@ -48,14 +64,14 @@ function IdP(basePath, authMethodId, authMethodConfig, options) {
      * the handler function, which is assumed to be of the signature
      * `function (req, res, next)` (the standard Express signature)
      */
-    this.endpoints = () => {
+    public endpoints(): EndpointDefinition[] {
         // This is just a sample endpoint; usually this will be like "callback",
         // e.g. for OAuth2 callbacks or similar.
         return [
             {
                 method: 'post',
                 uri: '/login',
-                handler: instance.loginHandler
+                handler: this.loginHandler
             }
         ];
     };
@@ -69,7 +85,7 @@ function IdP(basePath, authMethodId, authMethodConfig, options) {
      * @param {*} pass Password
      * @param {*} callback Callback method, `function(err, authenticationData)`
      */
-    this.authorizeByUserPass = (user, pass, callback) => {
+    public authorizeByUserPass(user: string, pass: string, callback: AuthResponseCallback) {
         // Verify username and password, if possible.
         // Otherwise (for IdPs where this is not possible), return
         // an error with a reason. Use utils.failOAuth to create
@@ -79,7 +95,7 @@ function IdP(basePath, authMethodId, authMethodConfig, options) {
         return callback(null, this.getAuthResponse());
     };
 
-    this.checkRefreshToken = (tokenInfo, callback) => {
+    public checkRefreshToken(tokenInfo, callback: CheckRefreshCallback) {
         // Decide whether it's okay to refresh this token or not, e.g.
         // by checking that the user is still valid in your database or such;
         // for 3rd party IdPs, this may be tricky.
@@ -93,17 +109,17 @@ function IdP(basePath, authMethodId, authMethodConfig, options) {
      * Sample custom end point, e.g. for responding to logins; see this.endpoints()
      * for how this is hooked into the processes.
      */
-    this.loginHandler = (req, res, next) => {
+    private loginHandler = (req, res, next) => {
         // When you're done with whatever (like verifying username and password,
         // or checking a callback from a 3rd party IdP), you must use the registered
         // generic flow implementation object (genericFlow from the constructor) to
         // pass back the same type of structure as in the authorizeByUserPass below.
-        genericFlow.continueAuthorizeFlow(req, res, next, this.getAuthResponse());
+        this.genericFlow.continueAuthorizeFlow(req, res, next, this.getAuthResponse());
     };
 
 
     // Sample implementation
-    this.getAuthResponse = () => {
+    private getAuthResponse(): AuthResponse {
         // This is obviously just dummy code showing how the response
         // must look like to play nice with the 
         return {

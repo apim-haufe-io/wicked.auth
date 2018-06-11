@@ -1,6 +1,6 @@
 'use strict';
 /* jshint loopfunc: true */
-
+/*
 const passport = require('passport');
 const { debug, info, warn, error } = require('portal-env').Logger('auth-passport:adfs');
 const OAuth2Strategy = require('passport-oauth').OAuth2Strategy;
@@ -9,7 +9,7 @@ const wicked = require('wicked-sdk');
 
 const adfs = require('express').Router();
 
-const utils = require('../common/utils');
+import { utils } from '../common/utils';
 
 adfs.authenticateSettings = {
     failureRedirect: '/auth-server/failure'
@@ -175,3 +175,4 @@ function getScope(profile, authConfig) {
 }
 
 module.exports = adfs;
+*/

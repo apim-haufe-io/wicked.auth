@@ -7,6 +7,12 @@
                 "request": "launch",
                 "name": "Launch Program",
                 "program": "${workspaceRoot}/bin/authz"
+            },
+            {
+                "type": "node",
+                "request": "launch",
+                "name": "Launch Program (TS)",
+                "program": "${workspaceRoot}/dist/authz.js"
             }
         ]
     }

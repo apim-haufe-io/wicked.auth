@@ -1,12 +1,11 @@
 'use strict';
 
-const request = require('request');
+import * as request from 'request';
+import { StatusError } from '../common/utils-fail';
 const { debug, info, warn, error } = require('portal-env').Logger('portal-auth:kong-utils');
 const wicked = require('wicked-sdk');
 
-const utils = require('../common/utils');
-
-const kongUtils = function () { };
+import { utils } from '../common/utils';
 
 function kongAction(method, url, body, expectedStatusCode, callback) {
     //console.log('$$$$$$ kongAction: ' + method + ' ' + url);
@@ -24,7 +23,9 @@ function kongAction(method, url, body, expectedStatusCode, callback) {
     var kongUrl = wicked.getInternalKongAdminUrl();
     var methodBody = {
         method: method,
-        url: kongUrl + url
+        url: kongUrl + url,
+        json: null,
+        body: null
     };
     if (method != 'DELETE' &&
         method != 'GET') {
@@ -41,8 +42,7 @@ function kongAction(method, url, body, expectedStatusCode, callback) {
         if (err)
             return callback(err);
         if (expectedStatusCode != apiResponse.statusCode) {
-            const err = new Error('kongAction ' + method + ' on ' + url + ' did not return the expected status code (got: ' + apiResponse.statusCode + ', expected: ' + expectedStatusCode + ').');
-            err.status = apiResponse.statusCode;
+            const err = new StatusError(apiResponse.statusCode, 'kongAction ' + method + ' on ' + url + ' did not return the expected status code (got: ' + apiResponse.statusCode + ', expected: ' + expectedStatusCode + ').');
             debug(method + ' /' + url);
             debug(methodBody);
             debug(apiBody);
@@ -53,20 +53,21 @@ function kongAction(method, url, body, expectedStatusCode, callback) {
     });
 }
 
-kongUtils.kongGet = function (url, callback) {
-    kongAction('GET', url, null, 200, callback);
-};
+export const kongUtils = {
 
-kongUtils.kongPost = function (url, body, callback) {
-    kongAction('POST', url, body, 201, callback);
-};
+    kongGet: function (url, callback) {
+        kongAction('GET', url, null, 200, callback);
+    },
 
-kongUtils.kongDelete = function (url, callback) {
-    kongAction('DELETE', url, null, 204, callback);
-};
+    kongPost: function (url, body, callback) {
+        kongAction('POST', url, body, 201, callback);
+    },
 
-kongUtils.kongPatch = function (url, body, callback) {
-    kongAction('PATCH', url, body, 200, callback);
-};
+    kongDelete: function (url, callback) {
+        kongAction('DELETE', url, null, 204, callback);
+    },
 
-module.exports = kongUtils;
+    kongPatch: function (url, body, callback) {
+        kongAction('PATCH', url, body, 200, callback);
+    }
+};
