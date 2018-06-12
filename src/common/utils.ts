@@ -11,7 +11,7 @@ const request = require('request');
 const qs = require('querystring');
 
 import { failMessage, failError, failOAuth, makeError } from './utils-fail';
-import { NameSpec, StringCallback, SimpleCallback, AuthRequest, AuthResponse, AuthSession } from './types';
+import { NameSpec, StringCallback, SimpleCallback, AuthRequest, AuthResponse, AuthSession, OidcProfile } from './types';
 import { WickedApi, WickedPool, WickedPoolCallback, WickedApiCallback } from './wicked-types';
 
 const ERROR_TIMEOUT = 500; // ms
@@ -317,11 +317,12 @@ export const utils = {
             verifyPostUrl: `${authMethodId}/verify`,
             emailMissingUrl: `${authMethodId}/emailmissing`,
             grantUrl: `${authMethodId}/grant`,
+            manageGrantsUrl: `${authMethodId}/grants`,
             recaptcha: req.app.glob.recaptcha
         };
     },
 
-    getAndDeleteCsrfToken: function (req) {
+    getAndDeleteCsrfToken: function (req): string {
         debug('getAndDeleteCsrfToken()');
         const csrfToken = req.session.csrfToken;
         delete req.session.csrfToken;
@@ -383,7 +384,7 @@ export const utils = {
      * @param {*} req The incoming request
      * @param {*} authMethodId The auth method id this request applies to
      */
-    isLoggedIn: function (req, authMethodId) {
+    isLoggedIn: function (req, authMethodId: string): boolean {
         let isLoggedIn = false;
         if (req.session &&
             req.session[authMethodId] &&
@@ -400,10 +401,20 @@ export const utils = {
      * @param {*} req 
      * @param {*} authMethodId 
      */
-    getProfile: function (req, authMethodId) {
+    getProfile: function (req, authMethodId: string): OidcProfile {
         if (!utils.isLoggedIn(req, authMethodId))
             throw new Error('Cannot get profile if not logged in');
         return utils.getAuthResponse(req, authMethodId).profile;
+    },
+
+    /**
+     * Makes sure a user is logged in, and then redirects back to the original URL as per
+     * the given req object.
+     */
+    loginAndRedirectBack: function(req, res, authMethodId: string): void {
+        const thisUri = req.originalUrl;
+        const redirectUri = `${req.app.get('base_path')}/${authMethodId}/login?redirect_uri=${qs.escape(thisUri)}`;
+        return res.redirect(redirectUri);
     }
 };
 

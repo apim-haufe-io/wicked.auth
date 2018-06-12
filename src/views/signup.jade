@@ -53,10 +53,7 @@ block content
         and Conditions</a> and the <a target='_blank' href='#{portalUrl}content/privacy-policy'>Privacy/Cookie Policy</a>.
 
     if errorMessage
-        div(role='alert').alert.alert-danger
-            span(aria-hidden="true").glyphicon.glyphicon-exclamation-sign
-            span.sr-only Error:
-            | &nbsp; #{errorMessage}
+        +flashMessage('error', errorMessage)
 
     form(role='form' action='#{baseUrl}/#{signupUrl}' method='post' onsubmit='return validateSignup();')
 

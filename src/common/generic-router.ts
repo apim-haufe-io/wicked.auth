@@ -3,7 +3,7 @@
 import * as async from 'async';
 import { AuthRequest, AuthResponse, OidcProfile, EmailMissingHandler, ExpressHandler, IdentityProvider, AuthResponseCallback, TokenRequest, AccessTokenCallback, AccessToken } from './types';
 import { profileStore } from './profile-store'
-const { debug, info, warn, error } = require('portal-env').Logger('portal-auth:utils');
+const { debug, info, warn, error } = require('portal-env').Logger('portal-auth:generic-router');
 const wicked: any = require('wicked-sdk');
 
 import { oauth2 } from '../kong-oauth2/oauth2';
@@ -16,6 +16,7 @@ import { utils } from './utils';
 import { utilsOAuth2 } from './utils-oauth2';
 import { failMessage, failError, failOAuth, makeError, failJson } from './utils-fail';
 import { WickedApiScopes, WickedGrantCollection, WickedGrant, WickedUserInfo, WickedUserCreateInfo, WickedApiCallback, WickedScopeGrant } from './wicked-types';
+import { GrantManager } from './grant-manager';
 
 const ERROR_TIMEOUT = 500; // ms
 
@@ -31,6 +32,8 @@ export class GenericOAuth2Router {
         this.authMethodId = authMethodId;
 
         this.initOAuthRouter();
+        const grantManager = new GrantManager(this.authMethodId);
+        this.oauthRouter.use('/grants', grantManager.getRouter());
     }
 
     public getRouter() {
@@ -291,9 +294,7 @@ export class GenericOAuth2Router {
 
             if (!utils.isLoggedIn(req, authMethodId)) {
                 // User is not logged in; make sure we do that first
-                const thisUri = req.originalUrl;
-                const redirectUri = `${req.app.get('base_path')}/${authMethodId}/login?redirect_uri=${qs.escape(thisUri)}`;
-                return res.redirect(redirectUri);
+                return utils.loginAndRedirectBack(req, res, authMethodId);
             }
             // const redirectUri = `${req.app.get('base_url')}${authMethodId}/verifyemail`;
 

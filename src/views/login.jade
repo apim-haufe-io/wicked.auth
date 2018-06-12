@@ -57,18 +57,17 @@ block content
     //-     br
 
     if errorMessage
-        div(role='alert').alert.alert-danger
-            span(aria-hidden="true").glyphicon.glyphicon-exclamation-sign
-            span.sr-only Error:
-            | &nbsp; #{errorMessage}
+        +flashMessage('error', errorMessage)
 
     form(role='form' action='#{baseUrl}/#{loginUrl}' method='post' onsubmit='return validateLogin();')
 
         input(type='hidden' name='_csrf' value='#{csrfToken}')
 
+        -var predefUsername = prefillUsername ? prefillUsername : '';
+
         .form-group
             label(for='username') Username:
-            input(type='string' name='username' id='username').form-control
+            input(type='string' name='username' id='username' value='#{predefUsername}').form-control
             small 
                 span(id='errorUsername' style='color:red')
         .form-group

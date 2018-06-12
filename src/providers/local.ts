@@ -111,7 +111,7 @@ export class LocalIdP implements IdentityProvider {
         this.loginUser(username, password, (err, authResponse) => {
             if (err) {
                 debug(err);
-                return instance.renderLogin(req, res, 'Username or password invalid.');
+                return instance.renderLogin(req, res, 'Username or password invalid.', username);
             }
 
             instance.genericFlow.continueAuthorizeFlow(req, res, next, authResponse);
@@ -180,10 +180,12 @@ export class LocalIdP implements IdentityProvider {
         });
     };
 
-    private renderLogin(req, res, flashMessage: string) {
+    private renderLogin(req, res, flashMessage: string, prefillUsername?: string) {
         debug('renderLogin()');
         const viewModel = utils.createViewModel(req, this.authMethodId);
         viewModel.errorMessage = flashMessage;
+        if (prefillUsername)
+            viewModel.prefillUsername = prefillUsername;
         res.render('login', viewModel);
     }
 
