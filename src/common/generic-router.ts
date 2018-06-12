@@ -1,7 +1,7 @@
 'use strict';
 
 import * as async from 'async';
-import { AuthRequest, AuthResponse, OidcProfile, EmailMissingHandler, ExpressHandler, IdentityProvider, AuthResponseCallback, TokenRequest, AccessTokenCallback } from './types';
+import { AuthRequest, AuthResponse, OidcProfile, EmailMissingHandler, ExpressHandler, IdentityProvider, AuthResponseCallback, TokenRequest, AccessTokenCallback, AccessToken } from './types';
 import { profileStore } from './profile-store'
 const { debug, info, warn, error } = require('portal-env').Logger('portal-auth:utils');
 const wicked: any = require('wicked-sdk');
@@ -14,8 +14,8 @@ const qs = require('querystring');
 
 import { utils } from './utils';
 import { utilsOAuth2 } from './utils-oauth2';
-import { failMessage, failError, failOAuth, makeError } from './utils-fail';
-import { WickedApiScopes, WickedGrantCollection, WickedGrant, WickedUserInfo, WickedUserCreateInfo } from './wicked-types';
+import { failMessage, failError, failOAuth, makeError, failJson } from './utils-fail';
+import { WickedApiScopes, WickedGrantCollection, WickedGrant, WickedUserInfo, WickedUserCreateInfo, WickedApiCallback, WickedScopeGrant } from './wicked-types';
 
 const ERROR_TIMEOUT = 500; // ms
 
@@ -63,6 +63,11 @@ export class GenericOAuth2Router {
                 uri: '/verifyemail',
                 handler: this.createVerifyEmailPostHandler(this.authMethodId)
             },
+            {
+                method: 'post',
+                uri: '/grant',
+                handler: this.createGrantPostHandler(this.authMethodId)
+            }
         ];
         // Spread operator, fwiw.
         endpoints.push(...standardEndpoints);
@@ -77,6 +82,34 @@ export class GenericOAuth2Router {
             else
                 this.oauthRouter[e.method](e.uri, e.handler);
         }
+
+        const instance = this;
+        // Specific error handler for this router
+        this.oauthRouter.use(function (err, req, res, next) {
+            debug(`Error handler for ${instance.authMethodId}`);
+            // Handle OAuth2 errors specifically here
+            if (err.oauthError) {
+                if (req.isTokenFlow) {
+                    // Return a plain error message in JSON
+                    error(err);
+                    return res.json({ error: err.oauthError, error_desription: err.message });
+                }
+
+                // Check for authorization calls
+                if (utils.isLoggedIn(req, instance.authMethodId)) {
+                    const sessionData = utils.getSession(req, instance.authMethodId);
+                    // We need an auth request to see how to answer
+                    if (sessionData.authRequest && sessionData.authRequest.redirect_uri) {
+                        // We must create a redirect with the error message
+                        const redirectUri = `${sessionData.authRequest.redirect_uri}?error=${qs.escape(err.oauthError)}&error_description=${qs.escape(err.message)}`;
+                        return res.redirect(redirectUri);
+                    }
+                }
+            }
+
+            // Whatever has not been handled yet, delegate to generic error handler (app.ts)
+            return next(err);
+        });
     }
 
     public createVerifyHandler(authMethodId: string): ExpressHandler {
@@ -320,23 +353,29 @@ export class GenericOAuth2Router {
 
     createEmailMissingPostHandler(authMethodId, continueAuthenticate) {
         debug(`createEmailMissingPostHandler(${authMethodId})`);
-        return (req, res, next) => {
+        return (req, res, next): void => {
             debug(`emailMissingPostHandler(${authMethodId})`);
 
             const body = req.body;
             const expectedCsrfToken = utils.getAndDeleteCsrfToken(req);
             const csrfToken = body._csrf;
 
-            if (!csrfToken || expectedCsrfToken !== csrfToken)
-                return setTimeout(failMessage, ERROR_TIMEOUT, 403, 'CSRF validation failed.', next);
+            if (!csrfToken || expectedCsrfToken !== csrfToken) {
+                setTimeout(failMessage, ERROR_TIMEOUT, 403, 'CSRF validation failed.', next);
+                return;
+            }
 
             const email = body.email;
             const email2 = body.email2;
 
-            if (!email || !email2)
-                return setTimeout(failMessage, ERROR_TIMEOUT, 400, 'Email address or confirmation not passed in.', next);
-            if (email !== email2)
-                return setTimeout(failMessage, ERROR_TIMEOUT, 400, 'Email address and confirmation of email address do not match', next);
+            if (!email || !email2) {
+                setTimeout(failMessage, ERROR_TIMEOUT, 400, 'Email address or confirmation not passed in.', next);
+                return;
+            }
+            if (email !== email2) {
+                setTimeout(failMessage, ERROR_TIMEOUT, 400, 'Email address and confirmation of email address do not match', next);
+                return;
+            }
 
             // Pass back email address to calling IdP (e.g. Twitter)
             return continueAuthenticate(req, res, next, email);
@@ -449,16 +488,21 @@ export class GenericOAuth2Router {
             // - Resource Owner Password Grant --> Check username/password/client id/secret and get a token
             // - Refresh Token --> Check validity of user and client --> Get a token
 
+            // Remember in the request that we're in the token flow; this is needed in the
+            // error handler to make sure we return a valid OAuth2 error JSON, in case
+            // we encounter errors.
+            req.isTokenFlow = true;
+
             const tokenRequest = utilsOAuth2.makeTokenRequest(req, apiId, instance.authMethodId);
             utilsOAuth2.validateTokenRequest(tokenRequest, function (err) {
                 if (err)
                     return next(err);
                 // Ok, we know we have something which could work (all data)
-                const handleTokenResult = function (err, accessToken) {
+                const handleTokenResult = function (err, accessToken: AccessToken): void {
                     if (err)
                         return failError(400, err, next);
                     if (accessToken.error)
-                        return res.status(400).json(accessToken);
+                        return failOAuth(400, accessToken.error, accessToken.error_description, next);
                     if (accessToken.session_data) {
                         profileStore.registerTokenOrCode(accessToken, tokenRequest.api_id, accessToken.session_data, (err) => {
                             if (err)
@@ -687,7 +731,7 @@ export class GenericOAuth2Router {
     // This is called as soon as we are sure that we have a logged in user, and possibly
     // also a valid registration record (if applicable to the API). Now we also have to
     // check the scope of the authorization request, and possible run the scopeFlow.
-    private authorizeFlow(req, res, next) {
+    private authorizeFlow(req, res, next): void {
         debug(`authorizeFlow(${this.authMethodId})`);
         const authRequest = utils.getAuthRequest(req, this.authMethodId);
         const userProfile = utils.getAuthResponse(req, this.authMethodId).profile;
@@ -703,8 +747,8 @@ export class GenericOAuth2Router {
 
     // Here we validate the scope, check for whether the user has granted the scopes to the
     // application or not.
-    private scopeFlow(req, res, next) {
-        debug(`scopeFlow(${this.authMethodId}`);
+    private scopeFlow(req, res, next): void {
+        debug(`scopeFlow(${this.authMethodId})`);
 
         const instance = this;
 
@@ -730,12 +774,17 @@ export class GenericOAuth2Router {
             debug(subsInfo);
 
             // Let's check whether the user already has some grants
-            wicked.apiGet(`/grants/${userId}/applications/${appInfo.id}/apis/${apiId}`, (err, grantsInfo: WickedGrantCollection) => {
+            wicked.apiGet(`/grants/${userId}/applications/${appInfo.id}/apis/${apiId}`, (err, grantsInfo: WickedGrant) => {
                 if (err && err.status !== 404 && err.statusCode !== 404)
                     return failError(500, err, next); // Unexpected error
-                let grantsList = [] as WickedGrant[];
-                if (!err) // if err --> status 404
-                    grantsList = grantsInfo.items;
+                if (err || !grantsInfo) {
+                    // if err --> status 404
+                    // Create a new grantsInfo object, it's not present
+                    grantsInfo = {
+                        grants: []
+                    };
+                }
+                const grantsList = grantsInfo.grants;
 
                 // Returns a list of scope names which need to be granted access to
                 const missingGrants = instance.diffGrants(grantsList, desiredScopesList);
@@ -743,24 +792,37 @@ export class GenericOAuth2Router {
                 if (missingGrants.length === 0) {
                     debug('All grants are already given; continue authorize flow.');
                     // We have all grants to scopes we need, we can continue
-                    return this.authorizeFlow_Step2(req, res, next);
+                    return instance.authorizeFlow_Step2(req, res, next);
                 }
                 debug('Missing grants:');
                 debug(missingGrants);
 
                 // We need additional scopes granted to the application; for that
-                // we need to gather some information on the API (get the list scopes).
-                utils.getApiInfo(apiId, (err, apiInfo) => {
+                // we need to gather some information on the API (get the scope list).
+                utils.getApiInfo(apiId, function (err, apiInfo) {
                     if (err)
                         return failError(500, err, next);
                     debug('Creating view model for grant scope form');
 
+                    const viewModel = utils.createViewModel(req, instance.authMethodId);
+                    viewModel.grantRequests = instance.makeScopeList(missingGrants, apiInfo.settings.scopes);
+                    viewModel.apiInfo = apiInfo;
+                    viewModel.appInfo = appInfo;
+
+                    // Store some things for later reference
+                    const sessionData = utils.getSession(req, instance.authMethodId);
+                    sessionData.grantData = {
+                        missingGrants: missingGrants,
+                        existingGrants: grantsList
+                    };
+
+                    return res.render('grant_scopes', viewModel);
                 });
             });
         });
     }
 
-    private diffGrants(storedGrants: WickedGrant[], desiredScopesList: string[]): string[] {
+    private diffGrants(storedGrants: WickedScopeGrant[], desiredScopesList: string[]): string[] {
         debug('diffGrants()');
         const missingGrants = [];
         for (let i = 0; i < desiredScopesList.length; ++i) {
@@ -771,6 +833,86 @@ export class GenericOAuth2Router {
         }
         return missingGrants;
     }
+
+    private makeScopeList(grantNames: string[], apiScopes: WickedApiScopes): { scope: string, description: string }[] {
+        const scopeList: { scope: string, description: string }[] = [];
+        for (let i = 0; i < grantNames.length; ++i) {
+            const grantName = grantNames[i];
+            scopeList.push({
+                scope: grantName,
+                description: apiScopes[grantName].description
+            });
+        }
+        return scopeList;
+    }
+
+    private createGrantPostHandler(authMethodId) {
+        debug(`createGrantPostHandler(${authMethodId})`);
+        const instance = this;
+        return (req, res, next): void => {
+            debug(`grantPostHandler(${authMethodId})`);
+            const body = req.body;
+            const expectedCsrfToken = utils.getAndDeleteCsrfToken(req);
+            const csrfToken = body._csrf;
+            const action = body._action;
+            debug(`grantPostHandler(${authMethodId}, action: ${action})`);
+
+            if (!csrfToken || expectedCsrfToken !== csrfToken) {
+                setTimeout(failMessage, ERROR_TIMEOUT, 403, 'CSRF validation failed.', next);
+                return;
+            }
+
+            if (!utils.isLoggedIn(req, authMethodId)) {
+                setTimeout(failMessage, ERROR_TIMEOUT, 403, 'You are not logged in.', next);
+                return;
+            }
+
+            const sessionData = utils.getSession(req, authMethodId);
+            const grantData = sessionData.grantData;
+            if (!grantData) {
+                setTimeout(failMessage, ERROR_TIMEOUT, 500, 'Invalid state: Must contain grant data in session.', next);
+                return;
+            }
+            const authRequest = sessionData.authRequest;
+            const authResponse = sessionData.authResponse;
+            if (!authRequest || !authResponse) {
+                setTimeout(failMessage, ERROR_TIMEOUT, 500, 'Invalid state: Session must contain auth request and responses (you must be logged in)', next);
+                return;
+            }
+
+            // Remove the grant data from the session
+            delete sessionData.grantData;
+
+            switch (action) {
+                case "deny":
+                    warn(`User ${authResponse.userId} denied access to API ${authRequest.api_id} for application ${authRequest.app_id}, failing.`);
+                    failOAuth(403, 'access_denied', 'Access to the API was denied by the user', next);
+                    return;
+
+                case "allow":
+                    info(`User ${authResponse.userId} granted access to API ${authRequest.api_id} for application ${authRequest.app_id}.`);
+                    const grantList = grantData.existingGrants;
+                    grantData.missingGrants.forEach(g => grantList.push({ scope: g }));
+                    const userGrantInfo: WickedGrant = {
+                        userId: authResponse.userId,
+                        apiId: authRequest.api_id,
+                        applicationId: authRequest.app_id,
+                        grants: grantList
+                    };
+                    debug(userGrantInfo);
+                    wicked.apiPut(`/grants/${authResponse.userId}/applications/${authRequest.app_id}/apis/${authRequest.api_id}`, userGrantInfo, function (err) {
+                        if (err)
+                            return failError(500, err, next);
+                        info(`Successfully stored a grant for API ${authRequest.api_id} on behalf of user ${authResponse.userId}`);
+                        // Now delegate back to the scopeFlow, we should be fine now.
+                        return instance.scopeFlow(req, res, next);
+                    });
+                    return;
+            }
+            setTimeout(failMessage, ERROR_TIMEOUT, 500, 'Invalid action, must be "deny" or "allow".', next);
+            return;
+        };
+    };
 
     private authorizeFlow_Step2(req, res, next): void {
         debug(`authorizeFlow_Step2(${this.authMethodId})`);
@@ -807,7 +949,7 @@ export class GenericOAuth2Router {
         debug('tokenPasswordGrant()');
         const instance = this;
         // Let's validate the subscription first...
-        utilsOAuth2.validateSubscription(tokenRequest.client_id, tokenRequest.api_id, function (err, validationResult) {
+        utilsOAuth2.validateSubscription(tokenRequest, function (err, validationResult) {
             if (err)
                 return callback(err);
             const trustedSubscription = validationResult.trusted;
@@ -971,7 +1113,7 @@ export class GenericOAuth2Router {
                 return failOAuth(500, 'server_error', 'could not correctly retrieve authenticated user id from refresh token', callback);
             instance.idp.checkRefreshToken(tokenInfo, (err, refreshCheckResult) => {
                 // TODO: This might be possible to do for all APIs, e.g. check for the previously
-                // created user (in wicked). If not present -> Don't refres. We can still keep
+                // created user (in wicked). If not present -> Don't refresh. We can still keep
                 // the callback to the IdP for additional things (I can't imagine what right now though).
                 if (err)
                     return failOAuth(500, 'server_error', 'checking the refresh token returned an unexpected error.', callback);

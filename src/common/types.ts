@@ -1,4 +1,4 @@
-import { WickedApiScopes } from "./wicked-types";
+import { WickedApiScopes, WickedGrantCollection, WickedSubscriptionInfo, WickedGrant, WickedScopeGrant } from "./wicked-types";
 
 'use strict';
 
@@ -11,6 +11,7 @@ export interface OAuth2Request {
     // Not needed for client_credentials
     authenticated_userid?: string,
     scope?: any,
+    app_id?: string,
     // Hmm
     session_data?: any
 }
@@ -50,11 +51,17 @@ export interface AuthResponseCallback {
     (err, authResponse?: AuthResponse): void
 };
 
+export interface GrantProcessInfo {
+    missingGrants: string[],
+    existingGrants: WickedScopeGrant[]
+}
+
 export interface AuthSession {
     authRequest: AuthRequest,
     authResponse?: AuthResponse,
     tmpAuthResponse?: AuthResponse,
-    registrationNonce?: string
+    registrationNonce?: string,
+    grantData?: GrantProcessInfo
 };
 
 export interface OidcProfile {
@@ -166,6 +173,7 @@ export interface WickedApiScopesCallback {
 };
 
 export interface SubscriptionValidation {
+    subsInfo: WickedSubscriptionInfo,
     trusted: boolean
 };
 
@@ -187,10 +195,13 @@ export interface StringCallback {
 };
 
 export interface AccessToken {
-    access_token: string,
+    access_token?: string,
     refresh_token?: string,
-    token_type: string,
-    expires_in: number,
+    token_type?: string,
+    expires_in?: number,
+    // error case:
+    error?: string,
+    error_description?: string,
     // This doesn't belong here:
     session_data?: any
 }

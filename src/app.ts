@@ -113,11 +113,6 @@ app.initApp = function (authServerConfig: WickedAuthServer, callback: SimpleCall
     app.use(passport.initialize());
     app.use(passport.session());
 
-    app.use(function (req, res, next) {
-        debug(req.session);
-        next();
-    });
-
     // =======================
     // Actual implementation
     // =======================

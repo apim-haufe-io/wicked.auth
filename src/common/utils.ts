@@ -12,7 +12,7 @@ const qs = require('querystring');
 
 import { failMessage, failError, failOAuth, makeError } from './utils-fail';
 import { NameSpec, StringCallback, SimpleCallback, AuthRequest, AuthResponse, AuthSession } from './types';
-import { WickedApi, WickedPool, WickedPoolCallback } from './wicked-types';
+import { WickedApi, WickedPool, WickedPoolCallback, WickedApiCallback } from './wicked-types';
 
 const ERROR_TIMEOUT = 500; // ms
 
@@ -149,6 +149,12 @@ export const utils = {
         return fullName;
     },
 
+    stripTrailingSlash(s: string): string {
+        if (s.endsWith('/'))
+            return s.substring(0, s.length - 1);
+        return s;
+    },
+
     cors: function () {
         const optionsDelegate = (req, callback) => {
             const origin = req.header('Origin');
@@ -183,7 +189,7 @@ export const utils = {
 
     _apiInfoMap: {} as { [apiId: string]: { success: boolean, data?: WickedApi } },
 
-    getApiInfo: function (apiId: string, callback): void {
+    getApiInfo: function (apiId: string, callback: WickedApiCallback): void {
         debug(`getApiInfo(${apiId})`);
         if (utils._apiInfoMap[apiId] && utils._apiInfoMap[apiId].success)
             return callback(null, utils._apiInfoMap[apiId].data);
@@ -310,6 +316,7 @@ export const utils = {
             verifyEmailUrl: `${authMethodId}/verifyemail`,
             verifyPostUrl: `${authMethodId}/verify`,
             emailMissingUrl: `${authMethodId}/emailmissing`,
+            grantUrl: `${authMethodId}/grant`,
             recaptcha: req.app.glob.recaptcha
         };
     },

@@ -89,7 +89,7 @@ export class LocalIdP implements IdentityProvider {
         ];
     }
 
-    private loginHandler(req, res, next): void {
+    private loginHandler = (req, res, next): void => {
         debug(`POST ${this.authMethodId}/login`);
         debug('loginHandler()');
         // When you're done with whatever (like verifying username and password,

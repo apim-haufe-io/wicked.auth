@@ -1,7 +1,7 @@
 'use strict';
 
 import { WickedApiScopes, WickedApi, WickedSubscriptionInfo, WickedUserInfo } from "./wicked-types";
-import { WickedApiScopesCallback, AuthRequest, AuthRequestCallback, SubscriptionValidationCallback, ValidatedScopesCallback, TokenRequest, SimpleCallback, TokenInfoCallback, OidcProfile, OidcProfileCallback, AccessTokenCallback, AuthResponse } from "./types";
+import { WickedApiScopesCallback, AuthRequest, AuthRequestCallback, SubscriptionValidationCallback, ValidatedScopesCallback, TokenRequest, SimpleCallback, TokenInfoCallback, OidcProfile, OidcProfileCallback, AccessTokenCallback, AuthResponse, SubscriptionValidation, OAuth2Request } from "./types";
 
 const async = require('async');
 const { debug, info, warn, error } = require('portal-env').Logger('portal-auth:utils-oauth2');
@@ -52,12 +52,31 @@ export class UtilsOAuth2 {
             return failMessage(400, `Invalid response_type ${authRequest.response_type}`, callback);
         if (!authRequest.client_id)
             return failMessage(400, 'Invalid or empty client_id.', callback);
-        return this.validateSubscription(authRequest.client_id, authRequest.api_id, callback);
+        if (!authRequest.redirect_uri)
+            return failMessage(400, 'Invalid or empty redirect_uri', callback);
+        this.validateSubscription(authRequest, function (err, subsValidation: SubscriptionValidation) {
+            if (err)
+                return callback(err);
+            const application = subsValidation.subsInfo.application;
+            // Now we have a redirect_uri; we can now make use of failOAuth
+            if (!application.redirectUri)
+                return failOAuth(400, 'invalid_request', 'The application associated with the given client_id does not have a registered redirect_uri.', callback);
+
+            // Verify redirect_uri from application, has to match what is passed in
+            const uri1 = utils.stripTrailingSlash(authRequest.redirect_uri);
+            const uri2 = utils.stripTrailingSlash(subsValidation.subsInfo.application.redirectUri);
+
+            if (uri1 !== uri2)
+                return failOAuth(400, 'invalid_request', 'The provided redirect_uri does not match the registered redirect_uri', callback);
+
+            // Success
+            return callback(null, subsValidation);
+        });
     };
 
-    public validateSubscription = (clientId: string, apiId: string, callback: SubscriptionValidationCallback) => {
+    public validateSubscription = (oauthRequest: OAuth2Request, callback: SubscriptionValidationCallback) => {
         debug('validateSubscription()');
-        wicked.getSubscriptionByClientId(clientId, apiId, function (err, subsInfo: WickedSubscriptionInfo) {
+        wicked.getSubscriptionByClientId(oauthRequest.client_id, oauthRequest.api_id, function (err, subsInfo: WickedSubscriptionInfo) {
             if (err)
                 return failOAuth(400, 'invalid_request', 'could not validate client_id and API subscription', err, callback);
             // Do we have a trusted subscription?
@@ -67,8 +86,13 @@ export class UtilsOAuth2 {
                 // Yes, note that in the authRequest
                 trusted = true;
             }
-            const returnValues = {
-                trusted: trusted
+            if (!subsInfo.application || !subsInfo.application.id)
+                return failOAuth(500, 'server_error', 'Subscription information does not contain a valid application id', callback);
+
+            oauthRequest.app_id = subsInfo.application.id;
+            const returnValues: SubscriptionValidation = {
+                subsInfo: subsInfo,
+                trusted: trusted,
             };
 
             return callback(null, returnValues); // All's good for now
@@ -184,10 +208,10 @@ export class UtilsOAuth2 {
     public tokenClientCredentials = (tokenRequest: TokenRequest, callback: AccessTokenCallback) => {
         debug('tokenClientCredentials()');
         const instance = this;
-        this.validateSubscription(tokenRequest.client_id, tokenRequest.api_id, (err, subsTrust) => {
+        this.validateSubscription(tokenRequest, (err, validationResult) => {
             if (err)
                 return callback(err);
-            instance.validateApiScopes(tokenRequest.api_id, tokenRequest.scope, subsTrust.trusted, (err, scopeInfo) => {
+            instance.validateApiScopes(tokenRequest.api_id, tokenRequest.scope, validationResult.trusted, (err, scopeInfo) => {
                 if (err)
                     return callback(err);
                 tokenRequest.scope = scopeInfo.validatedScopes;
@@ -260,27 +284,13 @@ export class UtilsOAuth2 {
         });
     }
 
-    // private makeFullName(userInfo: WickedUserInfo): string {
-    //     if (userInfo.firstName && userInfo.lastName)
-    //         return `${userInfo.firstName} ${userInfo.lastName}`;
-    //     else if (userInfo.lastName)
-    //         return userInfo.lastName;
-    //     else if (userInfo.firstName)
-    //         return userInfo.firstName;
-    //     return "No Name";
-    // }
-
     public wickedUserInfoToOidcProfile(userInfo: WickedUserInfo): OidcProfile {
         debug('wickedUserInfoToOidcProfile()');
         // Simple mapping to some basic OIDC profile claims
         const oidcProfile = {
             sub: userInfo.id,
             email: userInfo.email,
-            email_verified: userInfo.validated,
-            // name: makeFullName(userInfo),
-            // given_name: userInfo.firstName,
-            // family_name: userInfo.lastName
-            // // admin: userInfo.admin // No no noooo
+            email_verified: userInfo.validated
         };
         return oidcProfile;
     };
@@ -289,9 +299,9 @@ export class UtilsOAuth2 {
         debug(`makeOidcProfile(${poolId}, ${authResponse.userId})`);
         const userId = authResponse.userId;
         const instance = this;
+
         // OK; we might be able to get the information from somewhere else, but let's keep
         // it simple.
-
         async.parallel({
             userInfo: callback => wicked.apiGet(`/users/${userId}`, callback),
             poolInfo: callback => utils.getPoolInfo(poolId, callback)
@@ -321,109 +331,5 @@ export class UtilsOAuth2 {
         });
     }
 };
-
-// Whoa, this is closures galore.
-// utils.verifyClientAndAuthenticate = function (idpName, passportAuthenticate) {
-//     return function (req, res, next) {
-//         const apiId = req.params.apiId;
-//         const clientId = req.query.client_id;
-//         const responseType = req.query.response_type;
-//         const givenRedirectUri = req.query.redirect_uri;
-//         const givenState = req.query.state;
-//         debug('/' + idpName + '/api/' + apiId + '?client_id=' + clientId + '&response_type=' + responseType);
-//         if (givenState)
-//             debug('given state: ' + givenState);
-
-//         if (!clientId)
-//             return next(makeError('Bad request. Query parameter client_id is missing.', 400));
-//         if (responseType !== 'token' && responseType !== 'code')
-//             return next(makeError('Bad request. Parameter response_type is missing or faulty. Only "token" and "code" are supported.', 400));
-//         // Check whether we need to bother Google or not.
-//         wicked.getSubscriptionByClientId(clientId, apiId, function (err, subsInfo) {
-//             if (err)
-//                 return next(err);
-
-//             // console.log(JSON.stringify(subsInfo, null, 2));
-
-//             // Yes, we have a valid combination of API and Client ID
-//             // Store data in the session.
-//             const redirectUri = subsInfo.application.redirectUri;
-
-//             if (givenRedirectUri && givenRedirectUri !== redirectUri)
-//                 return next(makeError('Bad request. redirect_uri mismatch.', 400));
-
-//             req.session.apiId = apiId;
-//             req.session.clientId = clientId;
-//             req.session.redirectUri = redirectUri;
-//             req.session.responseType = responseType;
-//             if (givenState)
-//                 req.session.state = givenState;
-//             else if (req.session.state)
-//                 delete req.session.state;
-
-//             req.session.userValid = false;
-
-//             // Remember the host of the redirectUri to allow CORS from it:
-//             storeRedirectUriForCors(redirectUri);
-
-//             // Off you go with passport:
-//             passportAuthenticate(req, res, next);
-//         });
-//     };
-// };
-
-// utils.authorizeAndRedirect = function (idpName, authServerName) {
-//     return function (req, res, next) {
-//         debug('/' + idpName + '/callback');
-
-//         if (!req.session ||
-//             !req.session.passport ||
-//             !req.session.passport.user ||
-//             !req.session.passport.user.id)
-//             return next(makeError('Could not retrieve authenticated user id from session.', 500));
-
-//         const authenticatedUserId = req.session.passport.user.id;
-//         const clientId = req.session.clientId;
-//         const apiId = req.session.apiId;
-//         const responseType = req.session.responseType;
-
-//         // This shouldn't happen...
-//         if (!clientId || !apiId || !responseType)
-//             return next(makeError('Invalid state, client_id, response_type and/or API id not known.', 500));
-
-//         // Now get a token puhlease.
-//         // Note: We don't use scopes here.
-//         const userInfo = {
-//             authenticated_userid: authenticatedUserId,
-//             client_id: clientId,
-//             api_id: apiId,
-//             auth_server: authServerName
-//         };
-//         let authorize = wicked.oauth2GetAuthorizationCode; // responseType === 'code'
-//         if (responseType === 'token')
-//             authorize = wicked.oauth2AuthorizeImplicit;
-
-//         authorize(userInfo, function (err, result) {
-//             if (err)
-//                 return next(err);
-//             if (!result.redirect_uri)
-//                 return next(makeError('Did not receive a redirect_uri from Kong Adapter.', 500));
-//             // Yay
-//             req.session.userValid = true;
-
-//             let clientRedirectUri = result.redirect_uri;
-//             // If we were passed a state, give that state back
-//             if (req.session.state)
-//                 clientRedirectUri += '&state=' + req.session.state;
-
-//             // Redirect back, for the token response, the access token is in the
-//             // fragment of the URI. For the code response, the code is in the query
-//             // of the URI
-//             res.redirect(clientRedirectUri);
-//         });
-//     };
-// };
-
-// module.exports = utilsOAuth2;
 
 export const utilsOAuth2 = new UtilsOAuth2();

@@ -51,13 +51,20 @@ export interface WickedApiScopes {
     }
 }
 
-export interface WickedGrant {
+export interface WickedScopeGrant {
     scope: string,
-    grantedDate: string // DateTime
+    grantedDate?: string // DateTime
 }
 
 export interface WickedGrantCollection {
     items: WickedGrant[]
+}
+
+export interface WickedGrant {
+    userId?: string,
+    apiId?: string,
+    applicationId?: string,
+    grants: WickedScopeGrant[]
 }
 
 export interface WickedAuthMethod {
