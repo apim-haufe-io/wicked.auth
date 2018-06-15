@@ -31,7 +31,7 @@ export class DummyIdP implements IdentityProvider {
         return this.genericFlow.getRouter();
     };
 
-    public authorizeWithUi(req, res, authRequest: AuthRequest): void {
+    public authorizeWithUi(req, res, next, authRequest: AuthRequest): void {
         // Do your thing...
         // Render a login mask...
         // Or redirect to a 3rd party IdP, like Google

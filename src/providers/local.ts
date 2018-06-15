@@ -36,7 +36,7 @@ export class LocalIdP implements IdentityProvider {
         return this.genericFlow.getRouter();
     }
 
-    public authorizeWithUi(req, res, authRequest: AuthRequest) {
+    public authorizeWithUi(req, res, next, authRequest: AuthRequest) {
         // Render a login mask...
         this.renderLogin(req, res, null);
     }

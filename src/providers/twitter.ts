@@ -83,7 +83,7 @@ export class TwitterIdP implements IdentityProvider {
         return this.genericFlow.getRouter();
     };
 
-    public authorizeWithUi(req, res, authRequest: AuthRequest) {
+    public authorizeWithUi(req, res, next, authRequest: AuthRequest) {
         // Do your thing...
         // Redirect to the Twitter login page
         return this.authenticateWithTwitter(req, res);

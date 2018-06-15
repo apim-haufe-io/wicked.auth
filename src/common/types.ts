@@ -94,7 +94,7 @@ export interface CheckRefreshCallback {
 export interface IdentityProvider {
     getType: () => string,
     getRouter: () => any,
-    authorizeWithUi: (req, res, authRequest: AuthRequest) => void,
+    authorizeWithUi: (req, res, next, authRequest: AuthRequest) => void,
     endpoints: () => EndpointDefinition[],
     authorizeByUserPass: (user: string, pass: string, callback: AuthResponseCallback) => void,
     checkRefreshToken: (tokenInfo, callback: CheckRefreshCallback) => void
@@ -148,6 +148,42 @@ export interface OAuth2IdpConfig extends OAuth2IdpConfigBase {
     defaultGroups?: {
         [groupName: string]: string
     }
+}
+
+export interface SamlSpOptions {
+    // "entity_id": "https://${PORTAL_NETWORK_APIHOST}/auth-server/metadata.xml",
+    entity_id: string,
+    // "assert_endpoint": "https://${PORTAL_NETWORK_APIHOST}/auth-server/assert",
+    assert_endpoint: string,
+    nameid_format?: string,
+    certificate: string,
+    private_key: string,
+    auth_context?: {
+        comparison: string,
+        class_refs: string[]
+    },
+    sign_get_request?: boolean,
+    allow_unencrypted_assertion?: boolean
+}
+
+export interface SamlIdpOptions {
+    sso_login_url: string,
+    sso_logout_url?: string,
+    certificates: string[],
+    force_authn?: boolean,
+    sign_get_request?: boolean,
+    allow_unencrypted_assertion: boolean
+}
+
+export interface SamlIdpConfig {
+    spOptions: SamlSpOptions,
+    idpOptions: SamlIdpOptions,
+
+    customIdField: string,
+    emailField: string,
+    nameField?: string,
+    firstNameField?: string,
+    lastNameField?: string
 }
 
 export interface TwitterIdpConfig {

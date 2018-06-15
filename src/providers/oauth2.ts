@@ -149,7 +149,7 @@ export class OAuth2IdP implements IdentityProvider {
      * in case those are needed (such as for displaying information on the API
      * or similar).
      */
-    public authorizeWithUi(req, res, authRequest: AuthRequest) {
+    public authorizeWithUi(req, res, next, authRequest: AuthRequest) {
         // Do your thing...
         return this.authenticateWithOAuth2(req, res);
     };

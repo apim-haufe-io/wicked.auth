@@ -474,7 +474,7 @@ export class GenericOAuth2Router {
                         }
 
                         // Not logged in, or forced login
-                        return instance.idp.authorizeWithUi(req, res, authRequest);
+                        return instance.idp.authorizeWithUi(req, res, next, authRequest);
                     });
             });
         });
@@ -596,7 +596,7 @@ export class GenericOAuth2Router {
             authRequest.plain = true;
             authRequest.redirect_uri = redirectUri;
 
-            return instance.idp.authorizeWithUi(req, res, authRequest);
+            return instance.idp.authorizeWithUi(req, res, next, authRequest);
         });
     }
 

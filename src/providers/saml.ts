@@ -1,31 +1,52 @@
 'use strict';
 
 import { GenericOAuth2Router } from '../common/generic-router';
-import { AuthRequest, EndpointDefinition, AuthResponseCallback, CheckRefreshCallback, AuthResponse, IdentityProvider, IdpOptions } from '../common/types';
+import { AuthRequest, EndpointDefinition, AuthResponseCallback, CheckRefreshCallback, AuthResponse, IdentityProvider, IdpOptions, SamlIdpConfig } from '../common/types';
 const { debug, info, warn, error } = require('portal-env').Logger('portal-auth:idp');
 const Router = require('express').Router;
+const saml2 = require('saml2-js');
 
 import { utils } from '../common/utils';
 import { failMessage, failError, failOAuth, makeError } from '../common/utils-fail';
 
 /**
- * This is a sample of how an IdP must work to be able to integrate into
- * the generic OAuth2 workflow in generic.js
+ * SAML OAuth2 Wrapper implementation
  */
-export class IdP implements IdentityProvider {
+export class SamlIdP implements IdentityProvider {
 
     private genericFlow: GenericOAuth2Router;
     private basePath: string;
     private authMethodId: string;
     private options: IdpOptions;
-    
+    private authMethodConfig: SamlIdpConfig;
+
+    private serviceProvider: any;
+    private identityProvider: any;
+
     constructor(basePath: string, authMethodId: string, authMethodConfig: any, options: IdpOptions) {
         debug(`constructor(${basePath}, ${authMethodId},...)`);
         this.genericFlow = new GenericOAuth2Router(basePath, authMethodId);
 
         this.basePath = basePath;
         this.authMethodId = authMethodId;
-        // this.authMethodConfig = authMethodConfig;
+        this.authMethodConfig = authMethodConfig;
+
+        if (!authMethodConfig.spOptions)
+            throw new Error(`SAML Auth Method ${authMethodId}: config does not contain an "spOptions" property.`);
+        if (!authMethodConfig.idpOptions)
+            throw new Error(`SAML Auth Method ${authMethodId}: config does not contain an "idpOptions" property.`);
+
+        // Assemble the SAML endpoints
+        const assertUrl = `${options.externalUrlBase}/${authMethodId}/assert`;
+        info(`SAML Authentication: Assert URL: ${assertUrl}`);
+        const entityUrl = `${options.externalUrlBase}/${authMethodId}/metadata.xml`;
+        info(`SAML Authentication: Metadata URL: ${entityUrl}`);
+
+        this.authMethodConfig.spOptions.assert_endpoint = assertUrl;
+        this.authMethodConfig.spOptions.entity_id = entityUrl;
+
+        this.serviceProvider = new saml2.ServiceProvider(authMethodConfig.spOptions);
+        this.identityProvider = new saml2.IdentityProvider(authMethodConfig.idpOptions);
 
         this.genericFlow.initIdP(this);
     }
@@ -53,8 +74,12 @@ export class IdP implements IdentityProvider {
      */
     public authorizeWithUi(req, res, next, authRequest: AuthRequest) {
         // Do your thing...
-        // Render a login mask...
-        // Or redirect to a 3rd party IdP, like Google
+        this.serviceProvider.create_login_request_url(this.identityProvider, {}, function (err, loginUrl, requestId) {
+            if (err)
+                return failError(500, err, next);
+            // What shall we do with the request ID...
+            res.redirect(loginUrl);
+        });
     };
 
     /**
@@ -69,12 +94,30 @@ export class IdP implements IdentityProvider {
         // e.g. for OAuth2 callbacks or similar.
         return [
             {
+                method: 'get',
+                uri: '/metadata.xml',
+                handler: this.metadataHandler
+            },
+            {
                 method: 'post',
-                uri: '/login',
-                handler: this.loginHandler
+                uri: '/assert',
+                handler: this.assertHandler
             }
         ];
     };
+
+    private samlMetadata: string = null;
+    private metadataHandler = (req, res, next) => {
+        res.type('application/xml');
+        if (!this.samlMetadata) {
+            this.samlMetadata = this.serviceProvider.create_metadata();
+        }
+        res.send(this.samlMetadata);
+    }
+
+    private assertHandler = (req, res, next) => {
+        return next(new Error('Not implemented'));
+    }
 
     /**
      * Verify username and password and return the data on the user, like
@@ -103,20 +146,6 @@ export class IdP implements IdentityProvider {
             allowRefresh: true
         });
     };
-
-
-    /**
-     * Sample custom end point, e.g. for responding to logins; see this.endpoints()
-     * for how this is hooked into the processes.
-     */
-    private loginHandler = (req, res, next) => {
-        // When you're done with whatever (like verifying username and password,
-        // or checking a callback from a 3rd party IdP), you must use the registered
-        // generic flow implementation object (genericFlow from the constructor) to
-        // pass back the same type of structure as in the authorizeByUserPass below.
-        this.genericFlow.continueAuthorizeFlow(req, res, next, this.getAuthResponse());
-    };
-
 
     // Sample implementation
     private getAuthResponse(): AuthResponse {

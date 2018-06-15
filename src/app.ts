@@ -29,6 +29,7 @@ import { WickedAuthServer } from './common/wicked-types';
 
 import { utils } from './common/utils';
 import { utilsOAuth2 } from './common/utils-oauth2';
+import { SamlIdP } from './providers/saml';
 
 // Use default options, see https://www.npmjs.com/package/session-file-store
 const sessionStoreOptions = {};
@@ -156,6 +157,9 @@ app.initApp = function (authServerConfig: WickedAuthServer, callback: SimpleCall
                 break;
             case "adfs":
                 idp = new OAuth2IdP(basePath, authMethod.name, authMethod.config, options);
+                break;
+            case "saml":
+                idp = new SamlIdP(basePath, authMethod.name, authMethod.config, options);
                 break;
             default:
                 error('ERROR: Unknown authMethod type ' + authMethod.type);

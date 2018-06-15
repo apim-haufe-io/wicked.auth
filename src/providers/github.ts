@@ -80,7 +80,7 @@ export class GithubIdP implements IdentityProvider {
         return this.genericFlow.getRouter();
     };
 
-    public authorizeWithUi(req, res, authRequest: AuthRequest) {
+    public authorizeWithUi(req, res, next, authRequest: AuthRequest) {
         // Do your thing...
         // Redirect to the Github login page
         return this.authenticateWithGithub(req, res);
