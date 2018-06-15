@@ -18,6 +18,7 @@ import { DummyIdP } from './providers/dummy';
 import { GithubIdP } from './providers/github';
 import { GoogleIdP } from './providers/google';
 import { TwitterIdP } from './providers/twitter';
+import { OAuth2IdP } from './providers/oauth2';
 // import { FacebookIdP } from './providers/facebook';
 // import { AdfsIdP } from './providers/adfs';
 // import { SamlIdP } from './providers/saml';
@@ -149,6 +150,12 @@ app.initApp = function (authServerConfig: WickedAuthServer, callback: SimpleCall
                 break;
             case "twitter":
                 idp = new TwitterIdP(basePath, authMethod.name, authMethod.config, options);
+                break;
+            case "oauth2":
+                idp = new OAuth2IdP(basePath, authMethod.name, authMethod.config, options);
+                break;
+            case "adfs":
+                idp = new OAuth2IdP(basePath, authMethod.name, authMethod.config, options);
                 break;
             default:
                 error('ERROR: Unknown authMethod type ' + authMethod.type);

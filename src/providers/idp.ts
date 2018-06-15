@@ -2,7 +2,7 @@
 
 import { GenericOAuth2Router } from '../common/generic-router';
 import { AuthRequest, EndpointDefinition, AuthResponseCallback, CheckRefreshCallback, AuthResponse, IdentityProvider, IdpOptions } from '../common/types';
-const { debug, info, warn, error } = require('portal-env').Logger('portal-auth:local');
+const { debug, info, warn, error } = require('portal-env').Logger('portal-auth:idp');
 const Router = require('express').Router;
 
 import { utils } from '../common/utils';

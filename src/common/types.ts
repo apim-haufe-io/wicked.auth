@@ -109,16 +109,46 @@ export interface LocalIdpConfig {
     trustUsers: boolean
 };
 
-export interface OAuth2IdpConfig {
+export interface OAuth2IdpConfigBase {
     clientId: string,
     clientSecret: string
 }
 
-export interface GithubIdpConfig extends OAuth2IdpConfig {
+export interface GithubIdpConfig extends OAuth2IdpConfigBase {
 };
 
-export interface GoogleIdpConfig extends OAuth2IdpConfig {
+export interface GoogleIdpConfig extends OAuth2IdpConfigBase {
 };
+
+export interface OAuth2IdpConfig extends OAuth2IdpConfigBase {
+    endpoints: {
+        authorizeEndpoint: string,
+        authorizeScope: string,
+        tokenEndpoint: string,
+        profileEndpoint: string,
+    },
+    resource?: string, // Needed for ADFS
+    // Defaults to upn
+    customIdField?: string,
+    // Defaults to name
+    nameField?: string,
+    // Defaults to given_name
+    firstNameField?: string,
+    // Defaults to family_name
+    lastNameField?: string,
+    // Defaults to email
+    emailField?: string,
+    // Defaults to true
+    trustUsers?: boolean,
+    // Specify to do JWT signing check
+    certificate?: string,
+    // Field containing a string list of group names
+    groupField?: string,
+    // Default group mappings, maps given groups to wicked groups
+    defaultGroups?: {
+        [groupName: string]: string
+    }
+}
 
 export interface TwitterIdpConfig {
     consumerKey: string,
