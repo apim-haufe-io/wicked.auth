@@ -38,24 +38,6 @@ block content
     if displayRedirectMessage
         h4 You will be redirected to the desired page right after successfully logging in.
 
-    //- if glob.auth.adfs && glob.auth.adfs.useAdfs
-    //-     a(href='/login/adfs').btn.btn-block.btn-lg.btn-primary
-    //-         i.fa.fa-cloud.fa-lg
-    //-         span &nbsp; Login with ADFS
-    //- if glob.auth.github && glob.auth.github.useGithub
-    //-     a(href="/login/github").btn.btn-lg.btn-block.btn-github
-    //-         i.fa.fa-github.fa-lg
-    //-         span &nbsp; Log in with GitHub
-    //- if glob.auth.google && glob.auth.google.useGoogle
-    //-     a(href="/login/google").btn.btn-lg.btn-block.btn-google
-    //-         i.fa.fa-google.fa-lg
-    //-         span &nbsp; Log in with Google
-
-    //- if glob.auth.local && glob.auth.local.useLocal
-    //-     br                            
-    //-     hr
-    //-     br
-
     if errorMessage
         +flashMessage('error', errorMessage)
 
