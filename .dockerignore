@@ -6,3 +6,4 @@ certs
 .git
 sessions
 *.tgz
+dist

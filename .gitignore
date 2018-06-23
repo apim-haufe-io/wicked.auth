@@ -5,3 +5,5 @@ sessions
 *.log
 *.tgz
 dist
+Dockerfile
+Dockerfile-alpine
