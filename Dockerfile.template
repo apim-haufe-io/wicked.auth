@@ -1,7 +1,7 @@
 FROM ${DOCKER_PREFIX}portal-env:${PORTAL_ENV_TAG}${BUILD_ALPINE} as builder
 USER root
 RUN npm install -g typescript
-RUN tsc
+RUN npm run build
 RUN chown -R node:node /usr/src/app
 
 FROM ${DOCKER_PREFIX}portal-env:${PORTAL_ENV_TAG}${BUILD_ALPINE}

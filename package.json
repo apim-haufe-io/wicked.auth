@@ -5,7 +5,8 @@
   "main": "bin/authz",
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1",
-    "build": "tsc && rm -rf ./dist/views && cp -rf ./src/views ./dist && cp -f package.json ./dist && rm -rf ./dist/assets && mkdir -p ./dist/assets/jquery && mkdir -p ./dist/assets/bootstrap && cp -rf ./node_modules/bootstrap/dist ./dist/assets/bootstrap && cp -rf ./node_modules/jquery/dist ./dist/assets/jquery && node ./dist/authz.js",
+    "build": "./build-typescript.sh",
+    "build-and-start": "./build-typescript.sh && node ./dist/authz.js",
     "start": "node ./dist/authz.js"
   },
   "repository": {
