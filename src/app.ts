@@ -48,6 +48,7 @@ export const app: any = express();
 app.initApp = function (authServerConfig: WickedAuthServer, callback: SimpleCallback) {
     // Store auth Config with application
     app.authConfig = authServerConfig;
+    app.initialized = true;
 
     if (!wicked.isDevelopmentMode()) {
         app.set('trust proxy', 1);
@@ -67,6 +68,34 @@ app.initApp = function (authServerConfig: WickedAuthServer, callback: SimpleCall
     }
 
     const basePath = app.get('base_path');
+
+    app._startupSeconds = utils.getUtc();
+    app.get('/ping', function (req, res, next) {
+        debug('/ping');
+        const health = {
+            name: 'auth',
+            message: 'Up and running',
+            uptime: (utils.getUtc() - app._startupSeconds),
+            healthy: 1,
+            pingUrl: '/ping',
+            version: utils.getVersion(),
+            error: null
+            // gitLastCommit: utils.getGitLastCommit(),
+            // gitBranch: utils.getGitBranch(),
+            // buildDate: utils.getBuildDate()
+        };
+        if (!app.initialized) {
+            health.healthy = 2;
+            health.message = 'Initializing - Waiting for API';
+            res.status(503);
+        } else if (app.lastErr) {
+            health.healthy = 0;
+            health.message = app.lastErr.message;
+            health.error = JSON.stringify(app.lastErr, null, 2);
+            res.status(500);
+        }
+        res.json(health);
+    });
 
     app.use(basePath + '/bootstrap', express.static(path.join(__dirname, 'assets/bootstrap/dist')));
     app.use(basePath + '/jquery', express.static(path.join(__dirname, 'assets/jquery/dist')));
