@@ -825,7 +825,7 @@ function getTokenRequest(grantType: string, oauthInfo: TokenOAuthInfo, callback:
         body: tokenBody
     } as TokenRequestPayload;
 
-    debug(JSON.stringify(tokenRequest, null, 2));
+    debug(JSON.stringify(tokenRequest.body, null, 2));
 
     return callback(null, tokenRequest);
 }
