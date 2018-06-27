@@ -149,10 +149,13 @@ export const utils = {
         return fullName;
     },
 
-    stripTrailingSlash(s: string): string {
-        if (s.endsWith('/'))
-            return s.substring(0, s.length - 1);
-        return s;
+    normalizeRedirectUri(s: string): string {
+        let tmp = s;
+        if (tmp.endsWith('/'))
+            tmp = tmp.substring(0, s.length - 1);
+        if (tmp.indexOf('?') >= 0)
+            tmp = tmp.substring(0, tmp.indexOf('?'));
+        return tmp;
     },
 
     cors: function () {
