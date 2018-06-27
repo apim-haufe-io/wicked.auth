@@ -954,6 +954,10 @@ export class GenericOAuth2Router {
             if (err)
                 return callback(err);
             const trustedSubscription = validationResult.trusted;
+            // In some cases, we didn't have the client_secret (password grant), add it here
+            if (!tokenRequest.client_secret)
+                tokenRequest.client_secret = validationResult.subsInfo.subscription.clientSecret;
+
             // Now we know whether we have a trusted subscription or not; only allow trusted subscriptions to
             // retrieve a token via the password grant.
             if (!trustedSubscription)
