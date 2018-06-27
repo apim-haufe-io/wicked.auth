@@ -63,11 +63,14 @@ export class UtilsOAuth2 {
                 return failOAuth(400, 'invalid_request', 'The application associated with the given client_id does not have a registered redirect_uri.', callback);
 
             // Verify redirect_uri from application, has to match what is passed in
-            const uri1 = utils.stripTrailingSlash(authRequest.redirect_uri);
-            const uri2 = utils.stripTrailingSlash(subsValidation.subsInfo.application.redirectUri);
+            const uri1 = utils.normalizeRedirectUri(authRequest.redirect_uri);
+            const uri2 = utils.normalizeRedirectUri(subsValidation.subsInfo.application.redirectUri);
 
-            if (uri1 !== uri2)
+            if (uri1 !== uri2) {
+                error(`Expected redirect_uri: ${uri2}`);
+                error(`Received redirect_uri: ${uri1}`);
                 return failOAuth(400, 'invalid_request', 'The provided redirect_uri does not match the registered redirect_uri', callback);
+            }
 
             // Success
             return callback(null, subsValidation);
