@@ -694,7 +694,7 @@ function tokenFlow(inputData: TokenRequest, tokenKongInvoker: TokenKongInvoker, 
 
     async.series([
         callback => lookupSubscription(oauthInfo, callback),
-        callback => validateTokenClientCredentials(oauthInfo, callback),
+        callback => validateTokenRequest(oauthInfo, callback),
         callback => getOAuth2Config(oauthInfo, callback),
         //callback => lookupConsumer(oauthInfo, callback), // What was this for?
         callback => lookupApi(oauthInfo, callback),
@@ -713,8 +713,8 @@ function tokenFlow(inputData: TokenRequest, tokenKongInvoker: TokenKongInvoker, 
 
 // Note that this is not necessary for the /authorize end point, only for the token
 // end point. Maybe it might be a good idea to make this behaviour configurable.
-function validateTokenClientCredentials(oauthInfo: TokenOAuthInfo, callback: TokenOAuthInfoCallback) {
-    debug('validateTokenClientCredentials()');
+function validateTokenRequest(oauthInfo: TokenOAuthInfo, callback: TokenOAuthInfoCallback) {
+    debug('validateTokenRequest()');
     const appId = oauthInfo.appInfo.id;
     const grantType = oauthInfo.inputData.grant_type;
     switch (grantType) {
@@ -786,7 +786,7 @@ function getTokenRequest(grantType: string, oauthInfo: TokenOAuthInfo, callback:
             tokenBody = {
                 grant_type: grantType,
                 client_id: oauthInfo.inputData.client_id,
-                client_secret: oauthInfo.inputData.client_secret,
+                client_secret: oauthInfo.inputData.client_secret, 
                 code: oauthInfo.inputData.code,
                 redirect_uri: oauthInfo.appInfo.redirectUri
             };
@@ -795,7 +795,7 @@ function getTokenRequest(grantType: string, oauthInfo: TokenOAuthInfo, callback:
             tokenBody = {
                 grant_type: grantType,
                 client_id: oauthInfo.inputData.client_id,
-                client_secret: oauthInfo.inputData.client_secret,
+                client_secret: oauthInfo.subsInfo.clientSecret, // On purpose! These aren't always here.
                 provision_key: oauthInfo.provisionKey,
                 authenticated_userid: oauthInfo.inputData.authenticated_userid,
                 scope: scope
@@ -805,7 +805,7 @@ function getTokenRequest(grantType: string, oauthInfo: TokenOAuthInfo, callback:
             tokenBody = {
                 grant_type: grantType,
                 client_id: oauthInfo.inputData.client_id,
-                client_secret: oauthInfo.inputData.client_secret,
+                client_secret: oauthInfo.subsInfo.clientSecret, // On purpose! These aren't always here.
                 refresh_token: oauthInfo.inputData.refresh_token
             };
             break;
