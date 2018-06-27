@@ -639,13 +639,12 @@ function getAuthorizeRequest(responseType: string, oauthInfo: AuthorizeOAuthInfo
     }
     debug('requested scope: ' + scope);
 
-    const oauthBody = {
+    const oauthBody: any = {
         response_type: responseType,
         provision_key: oauthInfo.provisionKey,
         client_id: oauthInfo.subsInfo.clientId,
         redirect_uri: oauthInfo.appInfo.redirectUri,
         authenticated_userid: oauthInfo.inputData.authenticated_userid,
-        scope: null
     };
     if (scope)
         oauthBody.scope = scope;
