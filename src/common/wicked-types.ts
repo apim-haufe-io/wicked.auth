@@ -133,6 +133,7 @@ export enum WickedPoolPropertyType {
 }
 
 export interface WickedPoolProperty {
+    id: string,
     description: string,
     type: string,
     maxLength: number,
@@ -144,6 +145,7 @@ export interface WickedPoolProperty {
 export interface WickedPool {
     id: string,
     name: string,
+    requiresNamespace: boolean,
     properties: WickedPoolProperty[]
 }
 

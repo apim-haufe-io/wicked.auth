@@ -6,8 +6,9 @@ block scripts
             const model = !{JSON.stringify(poolInfo)};
 
             let somethingBad = false;
-            for (let name in model.properties) {
-                const propInfo = model.properties[name];
+            for (let i=0; i<model.properties.length; ++i) {
+                const propInfo = model.properties[i];
+                const propName = propInfo.id;
                 const content = $('#' + name).val();
                 if (propInfo.type !== 'string')
                     continue;
@@ -56,14 +57,14 @@ block content
             label(for='email') E-Mail:
             input(type='string' name='email' id='email' readonly value="#{defaultProfile.email}").form-control
 
-        each propInfo, propName in poolInfo.properties
+        each propInfo, i in poolInfo.properties
             .form-group
                 -var required = propInfo.required ? ' (*)' : ''
-                label(for="#{propName}") #{propInfo.description}#{required}:
+                label(for="#{propInfo.id}") #{propInfo.description}#{required}:
                 -var thisValue = defaultProfile.hasOwnProperty(propInfo.oidcClaim) ? defaultProfile[propInfo.oidcClaim] : '';
-                input(type='string' name="#{propName}" id="#{propName}" value='#{thisValue}').form-control
+                input(type='string' name="#{propInfo.id}" id="#{propInfo.id}" value='#{thisValue}').form-control
                 small
-                    span(id="error#{propName}" style='color:red')
+                    span(id="error#{propInfo.id}" style='color:red')
 
         p Fields marked with (*) are required.
 

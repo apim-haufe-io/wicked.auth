@@ -316,10 +316,11 @@ export class UtilsOAuth2 {
 
             const profile = instance.wickedUserInfoToOidcProfile(userInfo);
             // Now let's see what we can map from the registration
-            for (let propName in poolInfo.properties) {
+            for (let i = 0; i < poolInfo.properties.length; ++i) {
+                const propInfo = poolInfo.properties[i];
+                const propName = propInfo.id;
                 if (!regInfo[propName])
                     continue;
-                const propInfo = poolInfo.properties[propName];
                 // If the property doesn't include a mapping to an OIDC claim, we can't use it
                 if (!propInfo.oidcClaim)
                     continue;
