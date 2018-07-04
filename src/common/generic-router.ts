@@ -551,7 +551,12 @@ export class GenericOAuth2Router {
             const userId = sessionData.authResponse.userId;
             const poolId = sessionData.authResponse.registrationPool;
 
+            const regData = req.body;
             // The backend validates the data
+            // TODO: Namespaces
+            const namespace = null;
+            regData.namespace = namespace;
+
             wicked.apiPut(`/registrations/pools/${poolId}/users/${userId}`, req.body, function (err) {
                 if (err)
                     return failError(500, err, next);
@@ -675,14 +680,29 @@ export class GenericOAuth2Router {
     // Helper methods
     // =============================================
 
-    private registrationFlow(poolId, req, res, next) {
+    private registrationFlow(poolId: string, req, res, next): void {
         debug('registrationFlow()');
 
         const authResponse = utils.getAuthResponse(req, this.authMethodId);
         const userId = authResponse.userId;
-        wicked.apiGet(`/registrations/pools/${poolId}/users/${userId}`, (err, regInfo) => {
+        // TODO: Namespace
+        const namespace = null;
+        let url = `/registrations/pools/${poolId}/users/${userId}`;
+        if (namespace)
+            url += `?namespace=${qs.escape(namespace)}`;
+        wicked.apiGet(url, (err, regInfos) => {
             if (err && err.statusCode !== 404)
                 return failError(500, err, next);
+            let regInfo;
+            if (regInfos) {
+                if (namespace) {
+                    regInfo = regInfos.items.find(r => r.namespace === namespace);
+                } else if (regInfos.items.length > 0) {
+                    if (regInfos.items.length !== 1)
+                        return failMessage(500, 'Multiple registrations detected for registration pool.', next);
+                    regInfo = regInfos.items[0];
+                }
+            }
 
             if (!regInfo) {
                 // User does not have a registration here, we need to get one
