@@ -246,7 +246,8 @@ export class OAuth2IdP implements IdentityProvider {
         const customId = `${this.authMethodId}:${profile[customIdField]}`;
         const defaultProfile: OidcProfile = {
             sub: customId,
-            email: profile[emailField]
+            email: profile[emailField],
+            email_verified: !!this.authMethodConfig.trustUsers
         };
         const name = profile[nameField];
         const firstName = profile[firstNameField];
