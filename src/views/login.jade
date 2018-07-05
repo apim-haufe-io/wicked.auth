@@ -61,5 +61,7 @@ block content
     
     h5
         a(href='#{baseUrl}/#{forgotPasswordUrl}') Forgot password?
-    h5
-        a(href='#{baseUrl}/#{signupUrl}') Create a new user.
+        
+    if !disallowSignup
+        h5
+            a(href='#{baseUrl}/#{signupUrl}') Create a new user.

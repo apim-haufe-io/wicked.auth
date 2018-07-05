@@ -1,7 +1,7 @@
 'use strict';
 
 import { GenericOAuth2Router } from '../common/generic-router';
-import { AuthRequest, AuthResponse, IdentityProvider, EndpointDefinition, IdpOptions, LocalIdpConfig, AuthResponseCallback, CheckRefreshCallback, OidcProfile } from '../common/types';
+import { AuthRequest, AuthResponse, IdentityProvider, EndpointDefinition, IdpOptions, LocalIdpConfig, AuthResponseCallback, CheckRefreshCallback, OidcProfile, BooleanCallback } from '../common/types';
 import { WickedUserInfo } from '../common/wicked-types';
 const { debug, info, warn, error } = require('portal-env').Logger('portal-auth:local');
 const wicked = require('wicked-sdk');
@@ -38,7 +38,7 @@ export class LocalIdP implements IdentityProvider {
 
     public authorizeWithUi(req, res, next, authRequest: AuthRequest) {
         // Render a login mask...
-        this.renderLogin(req, res, null);
+        this.renderLogin(req, res, next, null);
     }
 
     public authorizeByUserPass(user, pass, callback: AuthResponseCallback) {
@@ -102,7 +102,7 @@ export class LocalIdP implements IdentityProvider {
         const instance = this;
 
         if (!csrfToken || csrfToken !== expectedCsrfToken)
-            return this.renderLogin(req, res, 'Suspected login forging detected (CSRF protection).');
+            return this.renderLogin(req, res, next, 'Suspected login forging detected (CSRF protection).');
 
         const username = req.body.username;
         const password = req.body.password;
@@ -111,7 +111,7 @@ export class LocalIdP implements IdentityProvider {
         this.loginUser(username, password, (err, authResponse) => {
             if (err) {
                 debug(err);
-                return instance.renderLogin(req, res, 'Username or password invalid.', username);
+                return instance.renderLogin(req, res, next, 'Username or password invalid.', username);
             }
 
             instance.genericFlow.continueAuthorizeFlow(req, res, next, authResponse);
@@ -121,7 +121,7 @@ export class LocalIdP implements IdentityProvider {
     private signupHandler = (req, res, next) => {
         debug(`GET ${this.authMethodId}/signup`);
         debug('signupHandler()');
-        this.renderSignup(req, res, '');
+        this.renderSignup(req, res, next, '');
     };
 
     private signupPostHandler = (req, res, next) => {
@@ -134,7 +134,7 @@ export class LocalIdP implements IdentityProvider {
         const instance = this;
 
         if (!csrfToken || expectedCsrfToken !== csrfToken)
-            return setTimeout(this.renderSignup, 500, req, res, 'CSRF validation failed, please try again.');
+            return setTimeout(this.renderSignup, 500, req, res, next, 'CSRF validation failed, please try again.');
 
         const email = body.email;
         const password = body.password;
@@ -145,55 +145,110 @@ export class LocalIdP implements IdentityProvider {
         if (password !== password2)
             return failMessage(400, 'Passwords do not match', next);
 
-        // Recaptcha?
-        utils.verifyRecaptcha(req, (err) => {
+        // Is signup allowed for this API/auth method combination?
+        const apiId = utils.getAuthRequest(req, this.authMethodId).api_id;
+        this.checkSignupDisallowed(apiId, (err, disallowSignup) => {
             if (err)
-                return failError(403, err, next);
-            // Let's give it a shot; wicked can still intervene here...
-            const emailValidated = this.authMethodConfig.trustUsers;
-            const userCreateInfo = {
-                email: email,
-                password: password,
-                groups: [],
-                validated: emailValidated
-            } as WickedUserInfo;
-            debug(`signupPostHandler: Attempting to create user ${email}`);
-            wicked.apiPost('/users', userCreateInfo, (err, userInfo: WickedUserInfo) => {
+                return failError(500, err, next);
+            if (disallowSignup)
+                return failMessage(403, 'Signup is not allowed for this API or Authentication Method.', next);
+
+            // Recaptcha?
+            utils.verifyRecaptcha(req, (err) => {
                 if (err)
-                    return failError(500, err, next);
-
-                debug(`signupPostHandler: Successfully created user ${email} with id ${userInfo.id}`);
-
-                // Check whether we want to verify the email address or not
-                utils.createVerificationRequest(this.authMethodConfig.trustUsers, this.authMethodId, userInfo.email, (err) => {
+                    return failError(403, err, next);
+                // Let's give it a shot; wicked can still intervene here...
+                const emailValidated = this.authMethodConfig.trustUsers;
+                const userCreateInfo = {
+                    email: email,
+                    password: password,
+                    groups: [],
+                    validated: emailValidated
+                } as WickedUserInfo;
+                debug(`signupPostHandler: Attempting to create user ${email}`);
+                wicked.apiPost('/users', userCreateInfo, (err, userInfo: WickedUserInfo) => {
                     if (err)
                         return failError(500, err, next);
 
-                    const authResponse = instance.createAuthResponse(userInfo);
-                    debug(`signupPostHandler: Successfully created an authResponse`);
-                    debug(authResponse);
+                    debug(`signupPostHandler: Successfully created user ${email} with id ${userInfo.id}`);
 
-                    // We're practically logged in now, as the new user.
-                    instance.genericFlow.continueAuthorizeFlow(req, res, next, authResponse);
+                    // Check whether we want to verify the email address or not
+                    utils.createVerificationRequest(this.authMethodConfig.trustUsers, this.authMethodId, userInfo.email, (err) => {
+                        if (err)
+                            return failError(500, err, next);
+
+                        const authResponse = instance.createAuthResponse(userInfo);
+                        debug(`signupPostHandler: Successfully created an authResponse`);
+                        debug(authResponse);
+
+                        // We're practically logged in now, as the new user.
+                        instance.genericFlow.continueAuthorizeFlow(req, res, next, authResponse);
+                    });
                 });
             });
         });
     };
 
-    private renderLogin(req, res, flashMessage: string, prefillUsername?: string) {
-        debug('renderLogin()');
-        const viewModel = utils.createViewModel(req, this.authMethodId);
-        viewModel.errorMessage = flashMessage;
-        if (prefillUsername)
-            viewModel.prefillUsername = prefillUsername;
-        res.render('login', viewModel);
+    private checkSignupDisallowed(apiId: string, callback: BooleanCallback) {
+        debug(`checkSignupAllowed(${apiId})`);
+        const instance = this;
+        // This looks complicated, but we must find out whether signing up for using
+        // the API is allowed or not. This can be done in two places: On the registration
+        // pool (if the API has one), or directly on the auth method (with type local, this
+        // implementation).
+        utils.getApiRegistrationPool(apiId, (err, poolId) => {
+            if (err)
+                return callback(err);
+            // null is okay for poolId, then the API doesn't have a pool ID
+            if (poolId) {
+                // But now we have to retrieve that information as well
+                utils.getPoolInfo(poolId, (err, poolInfo) => {
+                    if (err)
+                        return callback(err);
+                    const disallowSignup = !!instance.authMethodConfig.disallowSignup || !!poolInfo.disallowRegister;
+                    return callback(null, disallowSignup);
+                });
+            } else {
+                const disallowSignup = !!instance.authMethodConfig.disallowSignup;
+                return callback(null, disallowSignup);
+            }
+        });
     }
 
-    private renderSignup(req, res, flashMessage: string) {
+    private renderLogin(req, res, next, flashMessage: string, prefillUsername?: string) {
+        debug('renderLogin()');
+        const authRequest = utils.getAuthRequest(req, this.authMethodId);
+        const instance = this;
+
+        this.checkSignupDisallowed(authRequest.api_id, (err, disallowSignup) => {
+            if (err)
+                return failError(500, err, next);
+            const viewModel = utils.createViewModel(req, instance.authMethodId);
+            viewModel.errorMessage = flashMessage;
+            viewModel.disallowSignup = disallowSignup;
+            if (prefillUsername)
+                viewModel.prefillUsername = prefillUsername;
+            res.render('login', viewModel);
+        });
+    }
+
+    private renderSignup(req, res, next, flashMessage: string) {
         debug('renderSignup()');
-        const viewModel = utils.createViewModel(req, this.authMethodId);
-        viewModel.errorMessage = flashMessage;
-        res.render('signup', viewModel);
+
+        const authRequest = utils.getAuthRequest(req, this.authMethodId);
+        const instance = this;
+
+        this.checkSignupDisallowed(authRequest.api_id, (err, disallowSignup) => {
+            if (err)
+                return failError(500, err, next);
+
+            if (disallowSignup)
+                return failMessage(403, 'Signup is not allowed.', next);
+
+            const viewModel = utils.createViewModel(req, this.authMethodId);
+            viewModel.errorMessage = flashMessage;
+            res.render('signup', viewModel);
+        })
     }
 
     private loginUser(username: string, password: string, callback: AuthResponseCallback) {

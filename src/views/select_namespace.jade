@@ -1,0 +1,18 @@
+extends auth_layout
+
+block content
+    h2 Select Registration
+    
+    p Your account has multiple registrations. Please select which one you want to use.
+
+    each namespace, i in namespaces
+        form(role='form' action='#{baseUrl}/#{selectNamespaceUrl}' method='post')
+            input(type='hidden' name='_csrf' value='#{csrfToken}')
+            input(type='hidden' name='namespace' value='#{namespace.namespace}')
+
+            button(class='btn btn-lg btn-primary btn-block' type='submit') #{namespace.description}
+        
+        br
+    
+    h5
+        a(href='#{baseUrl}/#{logoutUrl}') Log out

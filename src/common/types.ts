@@ -31,7 +31,9 @@ export interface AuthRequest extends OAuth2Request {
     prompt?: string,
     trusted?: boolean,
     scopesDiffer?: boolean,
-    plain?: boolean
+    plain?: boolean,
+    namespace?: string,
+    validNamespaces?: string[]
 }
 
 export interface AuthRequestCallback {
@@ -106,6 +108,7 @@ export interface IdpOptions {
 };
 
 export interface LocalIdpConfig {
+    disallowSignup: boolean,
     trustUsers: boolean
 };
 
@@ -259,6 +262,10 @@ export interface ValidatedScopesCallback {
 export interface StringCallback {
     (err, s?: string): void
 };
+
+export interface BooleanCallback {
+    (err, b?: boolean): void
+}
 
 export interface AccessToken {
     access_token?: string,

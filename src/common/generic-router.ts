@@ -15,7 +15,7 @@ const qs = require('querystring');
 import { utils } from './utils';
 import { utilsOAuth2 } from './utils-oauth2';
 import { failMessage, failError, failOAuth, makeError, failJson } from './utils-fail';
-import { WickedApiScopes, WickedGrantCollection, WickedGrant, WickedUserInfo, WickedUserCreateInfo, WickedApiCallback, WickedScopeGrant } from './wicked-types';
+import { WickedApiScopes, WickedGrantCollection, WickedGrant, WickedUserInfo, WickedUserCreateInfo, WickedApiCallback, WickedScopeGrant, WickedRegistrationCollection, WickedNamespace } from './wicked-types';
 import { GrantManager } from './grant-manager';
 
 const ERROR_TIMEOUT = 500; // ms
@@ -70,6 +70,11 @@ export class GenericOAuth2Router {
                 method: 'post',
                 uri: '/grant',
                 handler: this.createGrantPostHandler(this.authMethodId)
+            },
+            {
+                method: 'post',
+                uri: '/selectnamespace',
+                handler: this.createSelectNamespacePostHandler(this.authMethodId)
             }
         ];
         // Spread operator, fwiw.
@@ -411,6 +416,8 @@ export class GenericOAuth2Router {
             const givenState = req.query.state;
             const givenScope = req.query.scope;
             const givenPrompt = req.query.prompt;
+            // This is not OAuth2 compliant, but needed
+            const givenNamespace = req.query.namespace;
 
             const authRequest = instance.initAuthRequest(req);
             authRequest.api_id = apiId;
@@ -420,6 +427,7 @@ export class GenericOAuth2Router {
             authRequest.state = givenState;
             authRequest.scope = givenScope;
             authRequest.prompt = givenPrompt;
+            authRequest.namespace = givenNamespace;
 
             // Validate parameters first now (TODO: This is pbly feasible centrally,
             // it will be the same for all Auth Methods).
@@ -553,8 +561,8 @@ export class GenericOAuth2Router {
 
             const regData = req.body;
             // The backend validates the data
-            // TODO: Namespaces
-            const namespace = null;
+            const authRequest = utils.getAuthRequest(req, instance.authMethodId);
+            const namespace = authRequest.namespace;
             regData.namespace = namespace;
 
             wicked.apiPut(`/registrations/pools/${poolId}/users/${userId}`, req.body, function (err) {
@@ -661,8 +669,9 @@ export class GenericOAuth2Router {
                 if (!poolId) {
                     if (authResponse.registrationPool)
                         delete authResponse.registrationPool;
-                    // Nope, just go ahead; use the default Profile as profile
+                    // Nope, just go ahead; use the default Profile as profile, but using the ID from wicked
                     authResponse.profile = utils.clone(authResponse.defaultProfile) as OidcProfile;
+                    authResponse.profile.sub = authResponse.userId;
                     return this.authorizeFlow(req, res, next);
                 }
 
@@ -685,41 +694,136 @@ export class GenericOAuth2Router {
 
         const authResponse = utils.getAuthResponse(req, this.authMethodId);
         const userId = authResponse.userId;
-        // TODO: Namespace
-        const namespace = null;
-        let url = `/registrations/pools/${poolId}/users/${userId}`;
-        if (namespace)
-            url += `?namespace=${qs.escape(namespace)}`;
-        wicked.apiGet(url, (err, regInfos) => {
-            if (err && err.statusCode !== 404)
+
+        const authRequest = utils.getAuthRequest(req, this.authMethodId);
+        const namespace = authRequest.namespace;
+        const instance = this;
+        utils.getPoolInfoByApi(authRequest.api_id, function (err, poolInfo) {
+            if (err)
                 return failError(500, err, next);
-            let regInfo;
-            if (regInfos) {
-                if (namespace) {
-                    regInfo = regInfos.items.find(r => r.namespace === namespace);
-                } else if (regInfos.items.length > 0) {
-                    if (regInfos.items.length !== 1)
-                        return failMessage(500, 'Multiple registrations detected for registration pool.', next);
-                    regInfo = regInfos.items[0];
+
+            const requiresNamespace = !!poolInfo.requiresNamespace;
+
+            wicked.apiGet(`/registrations/pools/${poolId}/users/${userId}`, (err, regInfos) => {
+                if (err && err.statusCode !== 404)
+                    return failError(500, err, next);
+                let regInfo;
+                if (regInfos) {
+                    if (namespace) {
+                        regInfo = regInfos.items.find(r => r.namespace === namespace);
+                    } else {
+                        if (requiresNamespace) {
+                            if (regInfos.items.length === 0)
+                                return failMessage(400, 'Invalid request. For registering, a namespace must be given to enable registration (&namespace=...).', next);
+                            if (regInfos.items.length === 1) {
+                                // We want to return the namespace as well
+                                regInfo = regInfos.items[0];
+                                authRequest.namespace = regInfo.namespace;
+                            } else {
+                                return instance.renderSelectNamespace(req, res, next, regInfos);
+                            }
+                        } else {
+                            // This pool does not require namespaces (and does not allow them)
+                            if (regInfos.items.length > 0) {
+                                if (regInfos.items.length !== 1)
+                                    return failMessage(500, 'Multiple registrations detected for registration pool.', next);
+                                regInfo = regInfos.items[0];
+                            }
+                        }
+                    }
                 }
+
+                if (!regInfo) {
+                    if (poolInfo.disallowRegister) {
+                        return failMessage(403, 'Registration is not allowed, only pre-registered users can access this API.', next);
+                    }
+                    // User does not have a registration here, we need to get one
+                    return instance.renderRegister(req, res, next);
+                } else {
+                    // User already has a registration, create a suitable profile
+                    // TODO: Here we could check for not filled required fields
+                    utilsOAuth2.makeOidcProfile(poolId, authResponse, regInfo, (err, profile) => {
+                        if (err)
+                            return failError(500, err, next);
+                        // This will override the default user profile which is already
+                        // present, but that is fine.
+                        authResponse.profile = profile;
+                        return instance.authorizeFlow(req, res, next);
+                    });
+                }
+            });
+        });
+    }
+
+    private renderSelectNamespace(req, res, next, regInfos: WickedRegistrationCollection) {
+        debug(`renderSelectNamespace()`);
+
+        const instance = this;
+        debug(regInfos);
+        async.map(regInfos.items, (ri, callback) => {
+            debug(ri);
+            wicked.apiGet(`/pools/${ri.poolId}/namespaces/${ri.namespace}`, (err, namespaceInfo) => {
+                if (err && err.statusCode !== 404)
+                    return callback(err);
+                if (err && err.statusCode === 404)
+                    return callback(null, null);
+                return callback(null, namespaceInfo);
+            });
+        }, (err, results: WickedNamespace[]) => {
+            if (err)
+                return failError(500, err, next);
+            const viewModel = utils.createViewModel(req, instance.authMethodId);
+            debug(results);
+            const tmpNs = [];
+            for (let i = 0; i < results.length; ++i) {
+                if (results[i])
+                    tmpNs.push(results[i]);
+            }
+            viewModel.namespaces = tmpNs;
+
+            // Note down which namespaces are valid
+            const namespaceList = tmpNs.map(ni => ni.namespace);
+            debug(namespaceList);
+            const authRequest = utils.getAuthRequest(req, instance.authMethodId);
+            authRequest.validNamespaces = namespaceList;
+
+            return res.render('select_namespace', viewModel);
+        });
+    }
+
+    private createSelectNamespacePostHandler(authMethodId: string): ExpressHandler {
+        const instance = this;
+        return function (req, res, next) {
+            debug(`selectNamespacePostHandler(${authMethodId})`);
+            const body = req.body;
+            debug(body);
+            const expectedCsrfToken = utils.getAndDeleteCsrfToken(req);
+            const csrfToken = body._csrf;
+
+            if (!csrfToken || expectedCsrfToken !== csrfToken) {
+                setTimeout(failMessage, ERROR_TIMEOUT, 403, 'CSRF validation failed.', next);
+                return;
             }
 
-            if (!regInfo) {
-                // User does not have a registration here, we need to get one
-                return this.renderRegister(req, res, next);
-            } else {
-                // User already has a registration, create a suitable profile
-                // TODO: Here we could check for not filled required fields
-                utilsOAuth2.makeOidcProfile(poolId, authResponse, regInfo, (err, profile) => {
-                    if (err)
-                        return failError(500, err, next);
-                    // This will override the default user profile which is already
-                    // present, but that is fine.
-                    authResponse.profile = profile;
-                    return this.authorizeFlow(req, res, next);
-                });
-            }
-        });
+            const authRequest = utils.getAuthRequest(req, authMethodId);
+            if (!authRequest.validNamespaces)
+                return failMessage(403, 'Invalid state; missing list of valid namespaces.', next);
+            const validNamespaces = authRequest.validNamespaces;
+            delete authRequest.validNamespaces;
+
+            // Verify that the selected namespace is actually a valid one
+            const namespace = body.namespace;
+            if (validNamespaces.findIndex(ns => ns === namespace) < 0)
+                return failMessage(400, 'Invalid namespace selected. This should not be possible.', next);
+
+            authRequest.namespace = namespace;
+            // And off you go with the registration flow again...
+            utils.getApiRegistrationPool(authRequest.api_id, (err, poolId) => {
+                if (err)
+                    return failError(500, err, next);
+                return instance.registrationFlow(poolId, req, res, next);
+            });
+        };
     }
 
     private renderRegister(req, res, next) {
@@ -940,6 +1044,7 @@ export class GenericOAuth2Router {
         const authRequest = utils.getAuthRequest(req, this.authMethodId);
         const userProfile = utils.getAuthResponse(req, this.authMethodId).profile;
         debug('/authorize/login: Calling authorization end point.');
+        debug(userProfile);
         oauth2.authorize({
             response_type: authRequest.response_type,
             authenticated_userid: userProfile.sub,
@@ -1069,7 +1174,7 @@ export class GenericOAuth2Router {
                 }
             });
         } else {
-            return callback(new Error('unifyAuthResponse: Neither customId nor userId was passed into authResponse.'));
+            return callback(new Error('checkUserFromAuthResponse: Neither customId nor userId was passed into authResponse.'));
         }
     }
 

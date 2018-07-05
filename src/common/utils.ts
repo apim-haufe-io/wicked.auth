@@ -321,6 +321,7 @@ export const utils = {
             emailMissingUrl: `${authMethodId}/emailmissing`,
             grantUrl: `${authMethodId}/grant`,
             manageGrantsUrl: `${authMethodId}/grants`,
+            selectNamespaceUrl: `${authMethodId}/selectnamespace`,
             recaptcha: req.app.glob.recaptcha
         };
     },

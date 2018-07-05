@@ -29,6 +29,7 @@ export interface WickedApi {
     authServers?: string[],
     authMethods?: string[],
     registrationPool?: string,
+    requiredGroup?: string,
     settings: WickedApiSettings
 }
 
@@ -40,7 +41,6 @@ export interface WickedApiSettings {
     token_expiration?: string,
     scopes: WickedApiScopes,
     tags: string[],
-    requiredGroup?: string,
     plans: string[],
     internal?: boolean
 }
@@ -146,6 +146,8 @@ export interface WickedPool {
     id: string,
     name: string,
     requiresNamespace: boolean,
+    // Disallow interactive registration
+    disallowRegister: boolean,
     properties: WickedPoolProperty[]
 }
 
@@ -157,6 +159,24 @@ export interface WickedApiCallback {
 
 export interface WickedPoolCallback {
     (err, poolInfo?: WickedPool): void
+}
+
+export interface WickedRegistration {
+    userId: string,
+    poolId: string,
+    namespace?: string
+}
+
+export interface WickedRegistrationCollection {
+    items: WickedRegistration[],
+    count: number,
+    count_cached: boolean
+}
+
+export interface WickedNamespace {
+    namespace: string,
+    poolId: string,
+    description: string
 }
 
 // ===============

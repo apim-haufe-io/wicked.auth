@@ -950,15 +950,15 @@ function getKongApi(apiId: string, callback: KongApiCallback) {
     });
 }
 
-const _portalApis: { [apiId: string]: WickedApi } = {};
-function getPortalApi(apiId, callback: WickedApiCallback): void {
-    debug(`getPortalApi(${apiId})`);
-    if (_portalApis[apiId])
-        return callback(null, _portalApis[apiId]);
+const _wickedApis: { [apiId: string]: WickedApi } = {};
+function getWickedApi(apiId, callback: WickedApiCallback): void {
+    debug(`getWickedApi(${apiId})`);
+    if (_wickedApis[apiId])
+        return callback(null, _wickedApis[apiId]);
     wicked.apiGet('apis/' + apiId, function (err, apiData) {
         if (err)
             return callback(err);
-        _portalApis[apiId] = apiData;
+        _wickedApis[apiId] = apiData;
         return callback(null, apiData);
     });
 }
@@ -968,13 +968,13 @@ function lookupApi(oauthInfo: OAuthInfo, callback: OAuthInfoCallback): void {
     debug('lookupApi() for API ' + apiId);
     async.parallel({
         kongApi: callback => getKongApi(apiId, callback),
-        portalApi: callback => getPortalApi(apiId, callback)
+        wickedApi: callback => getWickedApi(apiId, callback)
     }, function (err, results) {
         if (err) {
             return failOAuth(500, 'server_error', 'could not retrieve API information from API or kong', err, callback);
         }
         const apiInfo = results.kongApi as KongApi;
-        const portalApiInfo = results.portalApi as WickedApi;
+        const wickedApiInfo = results.wickedApi as WickedApi;
 
         if (!apiInfo.uris) {
             return failOAuth(500, 'server_error', `api ${apiId} does not have a valid uris setting`, callback);
@@ -982,11 +982,11 @@ function lookupApi(oauthInfo: OAuthInfo, callback: OAuthInfoCallback): void {
 
         // We will have a specified auth_method, as it's mandatory, now check which auth methods are
         // allowed for the API. This is mandatory for the API.
-        if (!portalApiInfo.authMethods)
+        if (!wickedApiInfo.authMethods)
             return failOAuth(500, 'server_error', `api ${apiId} does not have any authMethods configured`, callback);
         const authMethod = oauthInfo.inputData.auth_method;
         debug(`lookupApi: Matching auth method ${authMethod} against API ${apiId}`);
-        const foundMethod = portalApiInfo.authMethods.find(m => m === authMethod);
+        const foundMethod = wickedApiInfo.authMethods.find(m => m === authMethod);
         if (!foundMethod)
             return failOAuth(500, 'unauthorized_client', `auth method ${authMethod} is not allowed for api ${apiId}`, callback);
         debug(`lookupApi: Auth method ${authMethod} is fine`);
