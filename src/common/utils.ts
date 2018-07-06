@@ -419,6 +419,15 @@ export const utils = {
         const thisUri = req.originalUrl;
         const redirectUri = `${req.app.get('base_path')}/${authMethodId}/login?redirect_uri=${qs.escape(thisUri)}`;
         return res.redirect(redirectUri);
+    },
+
+    decodeBase64: function (s) {
+        const decoded = Buffer.from(s, 'base64').toString();
+        // Verify it's really a base64 string
+        const encoded = Buffer.from(decoded).toString('base64');
+        if (s !== encoded)
+            throw new Error('Input string is not a valid base64 encoded string');
+        return decoded;
     }
 };
 

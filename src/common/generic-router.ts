@@ -100,7 +100,7 @@ export class GenericOAuth2Router {
                 if (req.isTokenFlow) {
                     // Return a plain error message in JSON
                     error(err);
-                    return res.json({ error: err.oauthError, error_desription: err.message });
+                    return res.json({ error: err.oauthError, error_description: err.message });
                 }
 
                 // Check for authorization calls
@@ -408,7 +408,7 @@ export class GenericOAuth2Router {
         // OAuth2 end point Authorize
         this.oauthRouter.get('/api/:apiId/authorize', /*csrfProtection,*/ function (req, res, next) {
             const apiId = req.params.apiId;
-            debug(`/api/${apiId}/authorize`);
+            debug(`/${instance.authMethodId}/api/${apiId}/authorize`);
 
             const clientId = req.query.client_id;
             const responseType = req.query.response_type;
@@ -490,7 +490,7 @@ export class GenericOAuth2Router {
         // !!!
         this.oauthRouter.post('/api/:apiId/token', function (req, res, next) {
             const apiId = req.params.apiId;
-            debug(`/api/${apiId}/token`);
+            debug(`${instance.authMethodId}/api/${apiId}/token`);
             // Full switch/case on things to do, for all flows
             // - Client Credentials -> Go to Kong and get a token
             // - Authorization Code -> Go to Kong and get a token

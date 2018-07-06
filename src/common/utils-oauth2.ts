@@ -152,7 +152,7 @@ export class UtilsOAuth2 {
     public makeTokenRequest(req, apiId: string, authMethodId: string): TokenRequest {
         // Gather parameters from body. Note that not all parameters
         // are used in all flows.
-        return {
+        const tokenRequest = {
             api_id: apiId,
             auth_method: req.app.get('server_name') + ':' + authMethodId,
             grant_type: req.body.grant_type,
@@ -165,6 +165,34 @@ export class UtilsOAuth2 {
             password: req.body.password,
             refresh_token: req.body.refresh_token
         };
+        if (!tokenRequest.client_id) {
+            // Check for Basic Auth
+            const authHeader = req.get('Authorization');
+            if (authHeader) {
+                let basicAuth = authHeader;
+                if (authHeader.toLowerCase().startsWith('basic')) {
+                    const spacePos = authHeader.indexOf(' ');
+                    basicAuth = authHeader.substring(spacePos + 1);
+                }
+                // Try to decode base 64 to get client_id and client_secret
+                try {
+                    const idAndSecret = utils.decodeBase64(basicAuth);
+                    // client_id:client_secret
+                    const colonIndex = idAndSecret.indexOf(':');
+                    if (colonIndex > 0) {
+                        tokenRequest.client_id = idAndSecret.substring(0, colonIndex);
+                        tokenRequest.client_secret = idAndSecret.substring(colonIndex + 1);
+                    } else {
+                        warn('makeTokenRequest: Received invalid client_id and client_secret in as Basic Auth')
+                    }
+                } catch (err) {
+                    error('Received Basic Auth credentials, but they are invalid')
+                    error(err);
+                }
+            }
+        }
+
+        return tokenRequest;
     };
 
     public validateTokenRequest = (tokenRequest: TokenRequest, callback: SimpleCallback) => {
