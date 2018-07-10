@@ -137,8 +137,9 @@ export class IdP implements IdentityProvider {
             defaultGroups: [],
             // Default OIDC profile
             defaultProfile: {
-                // This shouldn't be filled; will be overridden anyway
-                sub: null,
+                // Fill this with the customId; it will be overridden later, but
+                // may be used in case the API is a passthrough API.
+                sub: "idp:<user id in idp>",
                 email: "default@user.org",
                 // Specify whether the user's email address is pre-verified
                 // or not. I.e., whether you trust the email address of

@@ -33,7 +33,9 @@ export interface AuthRequest extends OAuth2Request {
     scopesDiffer?: boolean,
     plain?: boolean,
     namespace?: string,
-    validNamespaces?: string[]
+    validNamespaces?: string[],
+    // Used in the SAML case
+    requestId?: string
 }
 
 export interface AuthRequestCallback {
@@ -179,14 +181,13 @@ export interface SamlIdpOptions {
 }
 
 export interface SamlIdpConfig {
+    trustUsers: boolean,
     spOptions: SamlSpOptions,
     idpOptions: SamlIdpOptions,
 
-    customIdField: string,
-    emailField: string,
-    nameField?: string,
-    firstNameField?: string,
-    lastNameField?: string
+    // Expects a map "<profile property>": "mustache {{{template}}}"
+    // At least "sub" and "email" must be specified.
+    profile: any;
 }
 
 export interface TwitterIdpConfig {

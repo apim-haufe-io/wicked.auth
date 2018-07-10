@@ -144,6 +144,7 @@ export class GithubIdP implements IdentityProvider {
             const customId = `${instance.authMethodId}:${profile.id}`;
 
             const defaultProfile = {
+                sub: customId,
                 username: utils.makeUsername(nameGuess.fullName, profile.username),
                 preferred_username: utils.makeUsername(nameGuess.fullName, profile.username),
                 name: nameGuess.fullName,

@@ -154,6 +154,7 @@ export class TwitterIdP implements IdentityProvider {
         //debug(profile);
 
         const defaultProfile = {
+            sub: customId,
             username: utils.makeUsername(nameGuess.fullName, profile.username),
             preferred_username: utils.makeUsername(nameGuess.fullName, profile.username),
             name: nameGuess.fullName,

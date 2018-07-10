@@ -123,6 +123,7 @@ export class GoogleIdP implements IdentityProvider {
 
         const customId = `${this.authMethodId}:${profile.id}`;
         const defaultProfile = {
+            sub: customId,
             username: utils.makeUsername(profile.displayName, profile.username),
             preferred_username: utils.makeUsername(profile.displayName, profile.username),
             name: profile.displayName,

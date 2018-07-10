@@ -1,10 +1,11 @@
 'use strict';
 
 import { GenericOAuth2Router } from '../common/generic-router';
-import { AuthRequest, EndpointDefinition, AuthResponseCallback, CheckRefreshCallback, AuthResponse, IdentityProvider, IdpOptions, SamlIdpConfig } from '../common/types';
+import { AuthRequest, EndpointDefinition, AuthResponseCallback, CheckRefreshCallback, AuthResponse, IdentityProvider, IdpOptions, SamlIdpConfig, OidcProfile } from '../common/types';
 const { debug, info, warn, error } = require('portal-env').Logger('portal-auth:idp');
 const Router = require('express').Router;
 const saml2 = require('saml2-js');
+const mustache = require('mustache');
 
 import { utils } from '../common/utils';
 import { failMessage, failError, failOAuth, makeError } from '../common/utils-fail';
@@ -35,6 +36,10 @@ export class SamlIdP implements IdentityProvider {
             throw new Error(`SAML Auth Method ${authMethodId}: config does not contain an "spOptions" property.`);
         if (!authMethodConfig.idpOptions)
             throw new Error(`SAML Auth Method ${authMethodId}: config does not contain an "idpOptions" property.`);
+        if (!authMethodConfig.profile)
+            throw new Error(`SAML Auth Method ${authMethodId}: config does not contain a "profile" property.`);
+        if (!authMethodConfig.profile.sub || !authMethodConfig.profile.email)
+            throw new Error(`SAML Auth Method ${authMethodId}: config of profile must contain both "sub" and "email" mappings.`);
 
         // Assemble the SAML endpoints
         const assertUrl = `${options.externalUrlBase}/${authMethodId}/assert`;
@@ -52,7 +57,7 @@ export class SamlIdP implements IdentityProvider {
     }
 
     public getType() {
-        return "idp";
+        return "saml";
     }
 
     public getRouter() {
@@ -77,7 +82,8 @@ export class SamlIdP implements IdentityProvider {
         this.serviceProvider.create_login_request_url(this.identityProvider, {}, function (err, loginUrl, requestId) {
             if (err)
                 return failError(500, err, next);
-            // What shall we do with the request ID...
+            // Remember the request ID
+            authRequest.requestId = requestId;
             res.redirect(loginUrl);
         });
     };
@@ -90,33 +96,69 @@ export class SamlIdP implements IdentityProvider {
      * `function (req, res, next)` (the standard Express signature)
      */
     public endpoints(): EndpointDefinition[] {
-        // This is just a sample endpoint; usually this will be like "callback",
-        // e.g. for OAuth2 callbacks or similar.
         return [
             {
                 method: 'get',
                 uri: '/metadata.xml',
-                handler: this.metadataHandler
+                handler: this.createMetadataHandler()
             },
             {
                 method: 'post',
                 uri: '/assert',
-                handler: this.assertHandler
+                handler: this.createAssertHandler()
             }
         ];
     };
 
     private samlMetadata: string = null;
-    private metadataHandler = (req, res, next) => {
-        res.type('application/xml');
-        if (!this.samlMetadata) {
-            this.samlMetadata = this.serviceProvider.create_metadata();
+    private createMetadataHandler() {
+        const instance = this;
+        return function (req, res, next) {
+            res.type('application/xml');
+            if (!instance.samlMetadata) {
+                instance.samlMetadata = instance.serviceProvider.create_metadata();
+            }
+            res.send(instance.samlMetadata);
         }
-        res.send(this.samlMetadata);
     }
 
-    private assertHandler = (req, res, next) => {
-        return next(new Error('Not implemented'));
+    private createAssertHandler() {
+        const instance = this;
+        return function (req, res, next) {
+            debug(`assertHandler()`);
+            const authRequest = utils.getAuthRequest(req, instance.authMethodId);
+            const requestId = authRequest.requestId;
+            if (!requestId)
+                return failMessage(400, 'Invalid state for SAML Assert: Request ID is not present', next);
+            instance.assert(req, requestId, function (err, samlResponse) {
+                if (err)
+                    return failError(500, err, next);
+                debug(samlResponse);
+                instance.createAuthResponse(samlResponse, function (err, authResponse) {
+                    if (err)
+                        return next(err);
+                    return instance.genericFlow.continueAuthorizeFlow(req, res, next, authResponse);
+                });
+            });
+        }
+    }
+
+    private createAuthResponse(samlResponse, callback: AuthResponseCallback): void {
+        debug(`createAuthResponse()`);
+        const defaultProfile = this.buildProfile(samlResponse);
+        if (!defaultProfile.sub)
+            return callback(makeError('SAML Response did not contain a suitable ID (claim "sub" is missing/faulty in configuration?)', 400));
+        // Map to custom ID
+        const customId = `${this.authMethodId}:${defaultProfile.sub}`;
+        defaultProfile.sub = customId;
+        debug(defaultProfile);
+        const authResponse: AuthResponse = {
+            userId: null,
+            customId: customId,
+            defaultProfile: defaultProfile,
+            defaultGroups: []
+        }
+        return callback(null, authResponse);
     }
 
     /**
@@ -129,13 +171,8 @@ export class SamlIdP implements IdentityProvider {
      * @param {*} callback Callback method, `function(err, authenticationData)`
      */
     public authorizeByUserPass(user: string, pass: string, callback: AuthResponseCallback) {
-        // Verify username and password, if possible.
-        // Otherwise (for IdPs where this is not possible), return
-        // an error with a reason. Use utils.failOAuth to create
-        // an error which will be returned as JSON by the framework.
-
-        // Here, we assume user and pass are OK.
-        return callback(null, this.getAuthResponse());
+        debug('authorizeByUserPass()');
+        return failOAuth(400, 'unsupported_grant_type', 'SAML does not support authorizing headless with username and password', callback);
     };
 
     public checkRefreshToken(tokenInfo, callback: CheckRefreshCallback) {
@@ -147,38 +184,160 @@ export class SamlIdP implements IdentityProvider {
         });
     };
 
-    // Sample implementation
-    private getAuthResponse(): AuthResponse {
-        // This is obviously just dummy code showing how the response
-        // must look like to play nice with the 
-        return {
-            // The wicked database user ID, in case we already know this
-            // user (this only applies for local login with username and
-            // password)
-            userId: null,
-            // A string giving a unique user id for this IdP, usually with
-            // a prefix which corresponds with the auth method name this
-            // IdP is used for. This is used as a unique custom ID for the
-            // wicked user in the local database.
-            customId: 'idp:<user id in idp>',
-            // In case you have a predefined mapping to wicked user groups,
-            // E.g. from LDAP or AD groups, pass them in as strings here.
-            defaultGroups: [],
-            // Default OIDC profile
-            defaultProfile: {
-                // This shouldn't be filled; will be overridden anyway
-                sub: null,
-                email: "default@user.org",
-                // Specify whether the user's email address is pre-verified
-                // or not. I.e., whether you trust the email address of
-                // the IdP or not.
-                email_verified: true,
-                given_name: "Default",
-                family_name: "User"
-                // If you want to pass in more OIDC profile parameters,
-                // feel free to do so. See:
-                // http://openid.net/specs/openid-connect-core-1_0.html#Claims
+    private getLogoutResponseUrl(inResponseTo, relayState, callback) {
+        debug('getLogoutResponseUrl');
+        const instance = this;
+        this.serviceProvider.create_logout_response_url(
+            instance.identityProvider,
+            { in_response_to: inResponseTo, relay_state: relayState },
+            function (err, logoutResponseUrl) {
+                if (err) {
+                    console.error('create_logout_response_url failed.');
+                    console.error(err);
+                    return callback(err);
+                }
+                return callback(null, logoutResponseUrl);
+            });
+    }
+
+    private assert(req, requestId, callback) {
+        debug('assert');
+        if (!requestId || typeof (requestId) !== 'string')
+            return callback(new Error('assert needs a requestId to verify the SAML assertion.'));
+
+        const options = { request_body: req.body };
+        this.serviceProvider.post_assert(this.identityProvider, options, function (err, samlResponse) {
+            if (err) {
+                error('post_assert failed.');
+                return callback(err);
             }
-        };
-    };
+
+            if (!samlResponse.response_header)
+                return callback(new Error('The SAML response does not have a response_header property'));
+            if (!samlResponse.response_header.in_response_to)
+                return callback(new Error('The SAML response\'s response_header does not have an in_response_to property.'));
+            if (samlResponse.response_header.in_response_to != requestId) {
+                debug('wrong request ID in SAML response, in_response_to: ' + samlResponse.response_header.in_response_to + ', requestId: ' + requestId);
+                return callback(new Error('The SAML assertion does not correspond to expected request ID. Please try again.'));
+            }
+
+            debug('samlResponse:');
+            debug(JSON.stringify(samlResponse, null, 2));
+
+            // const userInfo = {
+            //     authenticated_userid: SamlIdP.findSomeId(samlResponse)
+            // };
+            callback(null, samlResponse);
+        });
+    }
+
+    // Currently not used
+    /*
+    private redirectAssert(req, callback) {
+        debug('redirect_assert');
+        if (!req.query || !req.query.SAMLRequest)
+            return callback(new Error('Request does not contain a SAMLRequest query parameter. Cannot parse.'));
+        const options = { request_body: req.query };
+        this.serviceProvider.redirect_assert(this.identityProvider, options, function (err, samlRequest) {
+            if (err) {
+                debug('redirect_assert failed.');
+                debug(err);
+                return callback(err);
+            }
+
+            if (!samlRequest.response_header)
+                return callback(new Error('The SAML Request does not have a response_header property'));
+            if (!samlRequest.response_header.id)
+                return callback(new Error('The SAML Request\'s response_header does not have an id property.'));
+
+            debug('samlResponse:');
+            debug(JSON.stringify(samlRequest, null, 2));
+
+            callback(null, samlRequest);
+        });
+    }
+    */
+
+    private static getAttributeNames(samlResponse) {
+        const attributeNames = [];
+        if (samlResponse.user && samlResponse.user.attributes) {
+            for (let attributeName in samlResponse.user.attributes) {
+                attributeNames.push(attributeName.toLowerCase());
+            }
+        }
+        return attributeNames;
+    }
+
+    private static getAttributeValue(samlResponse, wantedAttribute) {
+        let returnValue = null;
+        if (samlResponse.user && samlResponse.user.attributes) {
+            for (let attributeName in samlResponse.user.attributes) {
+                if (attributeName.toLowerCase() == wantedAttribute.toLowerCase()) {
+                    const attributeValues = samlResponse.user.attributes[attributeName];
+                    if (Array.isArray(attributeValues) && attributeValues.length > 0) {
+                        returnValue = attributeValues[0];
+                        break;
+                    } else if (isString(attributeValues)) {
+                        returnValue = attributeValues;
+                        break;
+                    } else {
+                        debug('Found attribute ' + wantedAttribute + ', but it\'s neither an array nor a string.');
+                    }
+                }
+            }
+        }
+        return returnValue;
+    }
+
+    private buildProfile(samlResponse): OidcProfile {
+        debug('buildProfile()');
+
+        const samlConfig = this.authMethodConfig;
+        const profileConfig = samlConfig.profile;
+
+        const propNames = SamlIdP.getAttributeNames(samlResponse);
+        debug('Profile property names:');
+        debug(propNames);
+
+        const profileModel = {};
+        for (let i = 0; i < propNames.length; ++i) {
+            const prop = propNames[i];
+            profileModel[prop] = SamlIdP.getAttributeValue(samlResponse, prop);
+        }
+
+        // By checking that there are mappers for "sub" and "email", we can
+        // be sure that we can map this to an OidcProfile.
+        const profile = {} as OidcProfile;
+        for (let propName in profileConfig) {
+            const propConfig = profileConfig[propName];
+            if (isLiteral(propConfig))
+                profile[propName] = propConfig;
+            else if (isString(propConfig))
+                profile[propName] = mustache.render(propConfig, profileModel);
+            else
+                warn(`buildProfile: Unknown type for property name ${propName}, expected number, boolean or string (with mustache templates)`);
+        }
+        if (samlConfig.trustUsers)
+            profile.email_verified = true;
+        debug('Built profile:');
+        debug(profile);
+
+        return profile;
+    }
+}
+
+function isString(ob) {
+    return (ob instanceof String || typeof ob === "string");
+}
+
+function isBoolean(ob) {
+    return (typeof ob === 'boolean');
+}
+
+function isNumber(ob) {
+    return (typeof ob === 'number');
+}
+
+function isLiteral(ob) {
+    return isBoolean(ob) || isNumber(ob);
 }

@@ -13,7 +13,6 @@ import { profileStore } from './profile-store';
 
 import { utils } from './utils';
 import { oauth2 } from '../kong-oauth2/oauth2';
-import { tokens } from '../kong-oauth2/tokens';
 
 export class UtilsOAuth2 {
 
@@ -116,11 +115,19 @@ export class UtilsOAuth2 {
             }
 
             let scopes = [] as string[];
-            if (requestScope)
-                scopes = requestScope.split(' ');
-            else
+            if (requestScope) {
+                if (requestScope.indexOf(' ') > 0)
+                    scopes = requestScope.split(' ');
+                else if (requestScope.indexOf(',') > 0)
+                    scopes = requestScope.split(',');
+                else if (requestScope.indexOf(';') > 0)
+                    scopes = requestScope.split(';')
+                else
+                    scopes = [requestScope];
+                debug(scopes);
+            } else {
                 scopes = [];
-
+            }
             const validatedScopes = [] as string[];
             // Pass upstream if we changed the scopes (e.g. for a trusted application)
             let scopesDiffer = false;

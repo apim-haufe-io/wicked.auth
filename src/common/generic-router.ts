@@ -632,7 +632,7 @@ export class GenericOAuth2Router {
         // - Pass-through APIs do not create local users
         this.checkUserFromAuthResponse(authResponse, (err, authResponse) => {
             if (err)
-                return failMessage(500, 'checkUserFromAuthResponse: ' + err.message, next);
+                return failError(500, err, next);
 
             const authRequest = utils.getAuthRequest(req, this.authMethodId);
             if (!authRequest)
@@ -1196,6 +1196,9 @@ export class GenericOAuth2Router {
             if (err) {
                 error('createUserFromDefaultProfile: POST to /users failed.');
                 error(err);
+                // Check if it's a 409, and if so, display a nicer error message.
+                if (err.status === 409 || err.statusCode === 409)
+                    return callback(makeError(`A user with the email address "${userCreateInfo.email}" already exists in the system. Please log in using the existing user's identity.`, 409));
                 return callback(err);
             }
             debug(`createUserFromDefaultProfile: Created new user with id ${userInfo.id}`);
