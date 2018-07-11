@@ -2,7 +2,8 @@
 
 var { debug, info, warn, error } = require('portal-env').Logger('portal:sessionstore');
 const redis = require('redis');
-const wicked = require('wicked-sdk');
+import * as wicked from 'wicked-sdk';
+import { WickedSessionStoreType } from 'wicked-sdk';
 
 interface RedisSettings {
     host: string,
@@ -45,14 +46,14 @@ function resolveRedis(): RedisSettings {
 
     const globals = wicked.getGlobals();
 
-    let sessionStoreType = 'file';
+    let sessionStoreType = WickedSessionStoreType.File;
     if (globals.sessionStore && globals.sessionStore.type) {
         sessionStoreType = globals.sessionStore.type;
     } else {
         throw new Error('Missing sessionStore global property, must be set to "redis".');
     }
 
-    if (sessionStoreType === 'file') {
+    if (sessionStoreType === WickedSessionStoreType.File) {
         throw new Error('Missing sessionStore global property, or type is set to "file", must be set to "redis".');
     }
 

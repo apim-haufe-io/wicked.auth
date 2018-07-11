@@ -1,11 +1,11 @@
 'use strict';
 
-import { WickedApiScopes, WickedApi, WickedSubscriptionInfo, WickedUserInfo } from "./wicked-types";
+import { WickedApiScopes, WickedApi, WickedSubscriptionInfo, WickedUserInfo } from "wicked-sdk";
 import { WickedApiScopesCallback, AuthRequest, AuthRequestCallback, SubscriptionValidationCallback, ValidatedScopesCallback, TokenRequest, SimpleCallback, TokenInfoCallback, OidcProfile, OidcProfileCallback, AccessTokenCallback, AuthResponse, SubscriptionValidation, OAuth2Request } from "./types";
 
 const async = require('async');
 const { debug, info, warn, error } = require('portal-env').Logger('portal-auth:utils-oauth2');
-const wicked = require('wicked-sdk');
+import * as wicked from 'wicked-sdk';
 const request = require('request');
 
 import { failMessage, failError, failOAuth, makeError } from './utils-fail';
@@ -28,7 +28,7 @@ export class UtilsOAuth2 {
         if (this._apiScopes[apiId])
             return callback(null, this._apiScopes[apiId]);
         debug('getApiScopes: Not present in cache, fetching.');
-        wicked.apiGet(`apis/${apiId}`, function (err, api: WickedApi) {
+        wicked.apiGet(`apis/${apiId}`, null, function (err, api: WickedApi) {
             if (err) {
                 debug('getApiScopes: Fetching API scopes errored.');
                 debug(err);
@@ -341,7 +341,7 @@ export class UtilsOAuth2 {
         // OK; we might be able to get the information from somewhere else, but let's keep
         // it simple.
         async.parallel({
-            userInfo: callback => wicked.apiGet(`/users/${userId}`, callback),
+            userInfo: callback => wicked.apiGet(`/users/${userId}`, null, callback),
             poolInfo: callback => utils.getPoolInfo(poolId, callback)
         }, function (err, results) {
             if (err)

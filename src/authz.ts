@@ -7,9 +7,9 @@ const async = require('async');
 const { debug, info, warn, error } = require('portal-env').Logger('portal-auth:server');
 const http = require('http');
 const passport = require('passport');
-const wicked = require('wicked-sdk');
+import * as wicked from 'wicked-sdk';
 import { utils } from './common/utils.js';
-import { WickedAuthServer } from './common/wicked-types';
+import { WickedAuthServer } from 'wicked-sdk';
 
 let authServerId = 'default';
 if (process.env.AUTH_SERVER_NAME) {
@@ -45,7 +45,7 @@ async.series({
     init: callback => wicked.initialize(wickedOptions, callback),
     // waitForKong: callback => wicked.awaitKongOAuth2(callback),
     initMachineUser: callback => wicked.initMachineUser(authServerId, callback),
-    authServerConfig: callback => wicked.apiGet('auth-servers/' + authServerId, callback),
+    authServerConfig: callback => wicked.apiGet('auth-servers/' + authServerId, null, callback),
 }, function (err, results) {
     if (err) {
         error(err);

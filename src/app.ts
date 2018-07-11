@@ -6,7 +6,7 @@ const bodyParser = require('body-parser');
 const cookieParser = require('cookie-parser');
 const path = require('path');
 const logger = require('morgan');
-const wicked = require('wicked-sdk');
+import * as wicked from 'wicked-sdk';
 const passport = require('passport');
 
 const session = require('express-session');
@@ -25,7 +25,7 @@ import { OAuth2IdP } from './providers/oauth2';
 
 import { StatusError } from './common/utils-fail';
 import { SimpleCallback } from './common/types';
-import { WickedAuthServer } from './common/wicked-types';
+import { WickedAuthServer } from 'wicked-sdk';
 
 import { utils } from './common/utils';
 import { utilsOAuth2 } from './common/utils-oauth2';

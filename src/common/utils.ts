@@ -2,7 +2,7 @@
 
 const cors = require('cors');
 const { debug, info, warn, error } = require('portal-env').Logger('portal-auth:utils');
-const wicked = require('wicked-sdk');
+import * as wicked from 'wicked-sdk';
 const crypto = require('crypto');
 const url = require('url');
 const fs = require('fs');
@@ -12,7 +12,7 @@ const qs = require('querystring');
 
 import { failMessage, failError, failOAuth, makeError } from './utils-fail';
 import { NameSpec, StringCallback, SimpleCallback, AuthRequest, AuthResponse, AuthSession, OidcProfile } from './types';
-import { WickedApi, WickedPool, WickedPoolCallback, WickedApiCallback } from './wicked-types';
+import { WickedApi, WickedPool, WickedPoolCallback, WickedApiCallback } from 'wicked-sdk';
 
 const ERROR_TIMEOUT = 500; // ms
 
@@ -196,7 +196,7 @@ export const utils = {
         debug(`getApiInfo(${apiId})`);
         if (utils._apiInfoMap[apiId] && utils._apiInfoMap[apiId].success)
             return callback(null, utils._apiInfoMap[apiId].data);
-        wicked.apiGet(`/apis/${apiId}`, (err, apiInfo) => {
+        wicked.apiGet(`/apis/${apiId}`, null, (err, apiInfo) => {
             if (err) {
                 utils._apiInfoMap[apiId] = {
                     success: false
@@ -230,7 +230,7 @@ export const utils = {
         debug(`getPoolInfo(${poolId})`);
         if (utils._poolInfoMap[poolId] && utils._poolInfoMap[poolId].success)
             return callback(null, utils._poolInfoMap[poolId].data);
-        wicked.apiGet(`/pools/${poolId}`, (err, poolInfo) => {
+        wicked.apiGet(`/pools/${poolId}`, null, (err, poolInfo) => {
             if (err) {
                 utils._poolInfoMap[poolId] = {
                     success: false
@@ -300,7 +300,7 @@ export const utils = {
             email: email,
             link: verificationLink
         };
-        wicked.apiPost('/verifications', verifBody, callback);
+        wicked.apiPost('/verifications', verifBody, null, callback);
     },
 
     createViewModel: function (req, authMethodId): any {
@@ -365,7 +365,7 @@ export const utils = {
      */
     getUserByCustomId: function (customId, callback) {
         debug(`getUserByCustomId(${customId})`);
-        wicked.apiGet(`/users?customId=${qs.escape(customId)}`, (err, shortInfoList) => {
+        wicked.apiGet(`/users?customId=${qs.escape(customId)}`, null, (err, shortInfoList) => {
             if (err && err.statusCode == 404) {
                 // Not found
                 return callback(null, null);

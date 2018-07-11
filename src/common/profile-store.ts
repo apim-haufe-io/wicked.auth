@@ -1,10 +1,10 @@
 'use strict';
 
 import { NumberCallback, TokenInfo, SimpleCallback, OidcProfile, TokenResponse, OidcProfileCallback } from "./types";
-import { WickedApi } from "./wicked-types";
+import { WickedApi } from "wicked-sdk";
 
 const crypto = require('crypto');
-const wicked = require('wicked-sdk');
+import * as wicked from 'wicked-sdk';
 const { URL } = require('url');
 const qs = require('querystring');
 
@@ -27,7 +27,7 @@ export class ProfileStore {
         const instance = this;
         if (this._ttlSecondsMap[apiId])
             return callback(null, this._ttlSecondsMap[apiId]);
-        wicked.apiGet(`/apis/${apiId}`, function (err, apiConfig: WickedApi) {
+        wicked.apiGet(`/apis/${apiId}`, null, function (err, apiConfig: WickedApi) {
             if (err)
                 return callback(err);
             if (!apiConfig.settings)

@@ -3,7 +3,7 @@
 import * as request from 'request';
 import { StatusError } from '../common/utils-fail';
 const { debug, info, warn, error } = require('portal-env').Logger('portal-auth:kong-utils');
-const wicked = require('wicked-sdk');
+import * as wicked from 'wicked-sdk';
 
 import { utils } from '../common/utils';
 

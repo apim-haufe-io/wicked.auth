@@ -2,12 +2,12 @@
 
 import { utils } from './utils';
 import { ExpressHandler } from './types';
-import { WickedGrantCollection, WickedApplication, WickedUserInfo, WickedApi, WickedGrant } from './wicked-types';
+import { WickedGrantCollection, WickedApplication, WickedUserInfo, WickedApi, WickedGrant } from 'wicked-sdk';
 import { failMessage, failError } from './utils-fail';
 const { debug, info, warn, error } = require('portal-env').Logger('portal-auth:grant-manager');
 const Router = require('express').Router;
 const qs = require('querystring');
-const wicked: any = require('wicked-sdk');
+import * as wicked from 'wicked-sdk';
 import * as async from 'async';
 
 interface ShortInfo {
@@ -70,7 +70,7 @@ export class GrantManager {
         const userId = authResponse.userId;
 
         debug(`renderUserScopes: Getting user ${userId} grant collection`);
-        wicked.apiGet(`/grants/${userId}`, function (err, userGrants: WickedGrantCollection) {
+        wicked.apiGet(`/grants/${userId}`, null, function (err, userGrants: WickedGrantCollection) {
             if (err)
                 return failError(500, err, next);
             debug(`renderUserScopes: Successfully retrieved user grants.`)
@@ -112,7 +112,7 @@ export class GrantManager {
         if (!appId || !apiId)
             return failMessage(400, 'Invalid request, revoke_app and/or revoke_api not defined.', next);
 
-        wicked.apiDelete(`/grants/${userId}/applications/${appId}/apis/${apiId}`, function (err) {
+        wicked.apiDelete(`/grants/${userId}/applications/${appId}/apis/${apiId}`, null, function (err) {
             if (err && (err.status === 404 || err.statusCode === 404)) {
                 // Not found
                 return instance.renderUserScopesWithMessage(req, res, next, { type: FlashType.Warning, message: 'Application grant record not found.' });
@@ -131,7 +131,7 @@ function appendAppAndApiInfo(userGrants: WickedGrantCollection, callback: Extend
     const grantList: ExtendedGrant[] = [];
     async.each(userGrants.items, (userGrant: WickedGrant, callback) => {
         async.parallel({
-            appInfo: callback => wicked.apiGet(`/applications/${userGrant.applicationId}`, function (err, appInfo: WickedApplication) {
+            appInfo: callback => wicked.apiGet(`/applications/${userGrant.applicationId}`, null, function (err, appInfo: WickedApplication) {
                 if (err)
                     return callback(null, { id: userGrant.applicationId, name: '(Unknown or invalid application)' })
                 return callback(null, { id: userGrant.applicationId, name: appInfo.name });

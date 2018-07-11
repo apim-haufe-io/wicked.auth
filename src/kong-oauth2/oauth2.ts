@@ -2,10 +2,10 @@
 
 import * as qs from 'querystring';
 import { SimpleCallback, StringCallback, AuthRequest, TokenRequest, OAuth2Request, AccessToken, AccessTokenCallback } from '../common/types';
-import { WickedApplication, WickedSubscription, KongApi, KongApiCallback, WickedApi, WickedApiCallback } from '../common/wicked-types';
+import { WickedApplication, WickedSubscription, KongApi, KongApiCallback, WickedApi, WickedApiCallback } from 'wicked-sdk';
 const { debug, info, warn, error } = require('portal-env').Logger('portal-auth:oauth2');
 const async = require('async');
-const wicked = require('wicked-sdk');
+import * as wicked from 'wicked-sdk';
 const request = require('request');
 
 import { utils } from '../common/utils';
@@ -858,7 +858,7 @@ function postTokenRequest(tokenRequest: TokenRequestPayload, callback: AccessTok
 
 function lookupSubscription(oauthInfo: OAuthInfo, callback: OAuthInfoCallback) {
     debug('lookupSubscription()');
-    wicked.apiGet('subscriptions/' + oauthInfo.inputData.client_id, function (err, subscription) {
+    wicked.apiGet('subscriptions/' + oauthInfo.inputData.client_id, null, function (err, subscription) {
         if (err)
             return failOAuth(403, 'unauthorized_client', 'invalid client_id', err, callback);
 
@@ -955,7 +955,7 @@ function getWickedApi(apiId, callback: WickedApiCallback): void {
     debug(`getWickedApi(${apiId})`);
     if (_wickedApis[apiId])
         return callback(null, _wickedApis[apiId]);
-    wicked.apiGet('apis/' + apiId, function (err, apiData) {
+    wicked.apiGet('apis/' + apiId, null, function (err, apiData) {
         if (err)
             return callback(err);
         _wickedApis[apiId] = apiData;

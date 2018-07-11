@@ -1,4 +1,4 @@
-import { WickedApiScopes, WickedGrantCollection, WickedSubscriptionInfo, WickedGrant, WickedScopeGrant } from "./wicked-types";
+import { WickedApiScopes, WickedSubscriptionInfo, WickedScopeGrant } from "wicked-sdk";
 
 'use strict';
 

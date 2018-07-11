@@ -4,7 +4,7 @@ import * as async from 'async';
 import { AuthRequest, AuthResponse, OidcProfile, EmailMissingHandler, ExpressHandler, IdentityProvider, AuthResponseCallback, TokenRequest, AccessTokenCallback, AccessToken } from './types';
 import { profileStore } from './profile-store'
 const { debug, info, warn, error } = require('portal-env').Logger('portal-auth:generic-router');
-const wicked: any = require('wicked-sdk');
+import * as wicked from 'wicked-sdk';
 
 import { oauth2 } from '../kong-oauth2/oauth2';
 import { tokens } from '../kong-oauth2/tokens';
@@ -15,7 +15,7 @@ const qs = require('querystring');
 import { utils } from './utils';
 import { utilsOAuth2 } from './utils-oauth2';
 import { failMessage, failError, failOAuth, makeError, failJson } from './utils-fail';
-import { WickedApiScopes, WickedGrantCollection, WickedGrant, WickedUserInfo, WickedUserCreateInfo, WickedApiCallback, WickedScopeGrant, WickedRegistrationCollection, WickedNamespace } from './wicked-types';
+import { WickedApiScopes, WickedGrantCollection, WickedGrant, WickedUserInfo, WickedUserCreateInfo, WickedApiCallback, WickedScopeGrant, WickedRegistrationCollection, WickedNamespace } from 'wicked-sdk';
 import { GrantManager } from './grant-manager';
 
 const ERROR_TIMEOUT = 500; // ms
@@ -127,7 +127,7 @@ export class GenericOAuth2Router {
             debug(`verifyEmailHandler(${authMethodId})`);
             const verificationId = req.params.verificationId;
 
-            wicked.apiGet(`/verifications/${verificationId}`, (err, verificationInfo) => {
+            wicked.apiGet(`/verifications/${verificationId}`, null, (err, verificationInfo) => {
                 if (err && (err.statusCode === 404 || err.status === 404))
                     return setTimeout(failMessage, ERROR_TIMEOUT, 404, 'The given verification ID is not valid.', next);
                 if (err)
@@ -169,7 +169,7 @@ export class GenericOAuth2Router {
                 return;
             }
 
-            wicked.apiGet(`/verifications/${verificationId}`, (err, verificationInfo) => {
+            wicked.apiGet(`/verifications/${verificationId}`, null, (err, verificationInfo) => {
                 if (err && (err.statusCode === 404 || err.status === 404))
                     return setTimeout(failMessage, ERROR_TIMEOUT, 404, 'The given verification ID is not valid.', next);
                 if (err)
@@ -183,13 +183,13 @@ export class GenericOAuth2Router {
                 switch (verificationType) {
                     case "email":
                         // We're fine, we can verify the user's email address via the wicked API (as the machine user)
-                        wicked.apiPatch(`/users/${verificationInfo.userId}`, { validated: true }, (err, userInfo) => {
+                        wicked.apiPatch(`/users/${verificationInfo.userId}`, { validated: true }, null, (err, userInfo) => {
                             if (err)
                                 return setTimeout(failError, ERROR_TIMEOUT, 500, err, next);
                             info(`Successfully patched user, validated email for user ${verificationInfo.userId} (${verificationInfo.email})`);
 
                             // Pop off a deletion of the verification, but don't wait for it.
-                            wicked.apiDelete(`/verifications/${verificationId}`, (err) => { if (err) error(err); });
+                            wicked.apiDelete(`/verifications/${verificationId}`, null, (err) => { if (err) error(err); });
 
                             // Success
                             const viewModel = utils.createViewModel(req, authMethodId);
@@ -202,14 +202,14 @@ export class GenericOAuth2Router {
                         if (!password || !password2 || password !== password2 || password.length > 25 || password.length < 6)
                             return failMessage(400, 'Invalid passwords/passwords do not match.', next);
                         // OK, let's give this a try
-                        wicked.apiPatch(`/users/${verificationInfo.userId}`, { password: password }, (err, userInfo) => {
+                        wicked.apiPatch(`/users/${verificationInfo.userId}`, { password: password }, null, (err, userInfo) => {
                             if (err)
                                 return setTimeout(failError, ERROR_TIMEOUT, 500, err, next);
 
                             info(`Successfully patched user, changed password for user ${verificationInfo.userId} (${verificationInfo.email})`);
 
                             // Pop off a deletion of the verification, but don't wait for it.
-                            wicked.apiDelete(`/verifications/${verificationId}`, (err) => { if (err) error(err); });
+                            wicked.apiDelete(`/verifications/${verificationId}`, null, (err) => { if (err) error(err); });
 
                             // Success
                             const viewModel = utils.createViewModel(req, authMethodId);
@@ -251,7 +251,7 @@ export class GenericOAuth2Router {
             let emailValid = /.+@.+/.test(email);
             if (emailValid) {
                 // Try to retrieve the user from the database
-                wicked.apiGet(`/users?email=${qs.escape(email)}`, function (err, userInfoList) {
+                wicked.apiGet(`/users?email=${qs.escape(email)}`, null, function (err, userInfoList) {
                     if (err)
                         return error(err);
                     if (!Array.isArray(userInfoList))
@@ -273,7 +273,7 @@ export class GenericOAuth2Router {
                         userId: userInfo.id,
                         link: resetLink
                     };
-                    wicked.apiPost('/verifications', verifInfo, (err) => {
+                    wicked.apiPost('/verifications', verifInfo, null, (err) => {
                         if (err)
                             return error(err);
                         debug(`SUCCESS: Issuing password reset request for user ${userInfo.id} (${userInfo.email})`);
@@ -565,7 +565,7 @@ export class GenericOAuth2Router {
             const namespace = authRequest.namespace;
             regData.namespace = namespace;
 
-            wicked.apiPut(`/registrations/pools/${poolId}/users/${userId}`, req.body, function (err) {
+            wicked.apiPut(`/registrations/pools/${poolId}/users/${userId}`, req.body, null, function (err) {
                 if (err)
                     return failError(500, err, next);
 
@@ -704,7 +704,7 @@ export class GenericOAuth2Router {
 
             const requiresNamespace = !!poolInfo.requiresNamespace;
 
-            wicked.apiGet(`/registrations/pools/${poolId}/users/${userId}`, (err, regInfos) => {
+            wicked.apiGet(`/registrations/pools/${poolId}/users/${userId}`, null, (err, regInfos) => {
                 if (err && err.statusCode !== 404)
                     return failError(500, err, next);
                 let regInfo;
@@ -762,7 +762,7 @@ export class GenericOAuth2Router {
         debug(regInfos);
         async.map(regInfos.items, (ri, callback) => {
             debug(ri);
-            wicked.apiGet(`/pools/${ri.poolId}/namespaces/${ri.namespace}`, (err, namespaceInfo) => {
+            wicked.apiGet(`/pools/${ri.poolId}/namespaces/${ri.namespace}`, null, (err, namespaceInfo) => {
                 if (err && err.statusCode !== 404)
                     return callback(err);
                 if (err && err.statusCode === 404)
@@ -889,7 +889,7 @@ export class GenericOAuth2Router {
         // to the subscription (glue between API, application and plan), but we get the
         // application back readily when asking for the subscription.
         debug(`Getting subscription for client_id ${clientId}`);
-        wicked.apiGet(`/subscriptions/${clientId}`, (err, subsInfo) => {
+        wicked.apiGet(`/subscriptions/${clientId}`, null, (err, subsInfo) => {
             if (err)
                 return failError(500, err, next);
             const appInfo = subsInfo.application;
@@ -899,7 +899,7 @@ export class GenericOAuth2Router {
             debug(subsInfo);
 
             // Let's check whether the user already has some grants
-            wicked.apiGet(`/grants/${userId}/applications/${appInfo.id}/apis/${apiId}`, (err, grantsInfo: WickedGrant) => {
+            wicked.apiGet(`/grants/${userId}/applications/${appInfo.id}/apis/${apiId}`, null, (err, grantsInfo: WickedGrant) => {
                 if (err && err.status !== 404 && err.statusCode !== 404)
                     return failError(500, err, next); // Unexpected error
                 if (err || !grantsInfo) {
@@ -1025,7 +1025,7 @@ export class GenericOAuth2Router {
                         grants: grantList
                     };
                     debug(userGrantInfo);
-                    wicked.apiPut(`/grants/${authResponse.userId}/applications/${authRequest.app_id}/apis/${authRequest.api_id}`, userGrantInfo, function (err) {
+                    wicked.apiPut(`/grants/${authResponse.userId}/applications/${authRequest.app_id}/apis/${authRequest.api_id}`, userGrantInfo, null, function (err) {
                         if (err)
                             return failError(500, err, next);
                         info(`Successfully stored a grant for API ${authRequest.api_id} on behalf of user ${authResponse.userId}`);
@@ -1138,7 +1138,7 @@ export class GenericOAuth2Router {
         // which we want to track in the user database of wicked.
         function loadWickedUser(userId) {
             debug(`loadWickedUser(${userId})`);
-            wicked.apiGet(`/users/${userId}`, (err, userInfo) => {
+            wicked.apiGet(`/users/${userId}`, null, (err, userInfo) => {
                 if (err)
                     return callback(err);
                 debug('loadUserAndProfile returned.');
@@ -1192,7 +1192,7 @@ export class GenericOAuth2Router {
             validated: authResponse.defaultProfile.email_verified,
             groups: authResponse.defaultGroups
         };
-        wicked.apiPost('/users', userCreateInfo, function (err, userInfo: WickedUserInfo) {
+        wicked.apiPost('/users', userCreateInfo, null, function (err, userInfo: WickedUserInfo) {
             if (err) {
                 error('createUserFromDefaultProfile: POST to /users failed.');
                 error(err);
@@ -1247,7 +1247,7 @@ export class GenericOAuth2Router {
                 // the callback to the IdP for additional things (I can't imagine what right now though).
                 if (err)
                     return failOAuth(500, 'server_error', 'checking the refresh token returned an unexpected error.', callback);
-                wicked.apiGet('users/' + userId, function (err, userInfo) {
+                wicked.apiGet('users/' + userId, null, function (err, userInfo) {
                     if (err)
                         return failOAuth(400, 'invalid_request', 'user associated with refresh token is not a valid user (anymore)', err, callback);
                     debug('wicked local user info:');

@@ -2,9 +2,9 @@
 
 import { GenericOAuth2Router } from '../common/generic-router';
 import { AuthRequest, AuthResponse, IdentityProvider, EndpointDefinition, IdpOptions, LocalIdpConfig, AuthResponseCallback, CheckRefreshCallback, OidcProfile, BooleanCallback } from '../common/types';
-import { WickedUserInfo } from '../common/wicked-types';
+import { WickedUserInfo } from 'wicked-sdk';
 const { debug, info, warn, error } = require('portal-env').Logger('portal-auth:local');
-const wicked = require('wicked-sdk');
+import * as wicked from 'wicked-sdk';
 const Router = require('express').Router;
 
 import { utils } from '../common/utils';
@@ -166,7 +166,7 @@ export class LocalIdP implements IdentityProvider {
                     validated: emailValidated
                 } as WickedUserInfo;
                 debug(`signupPostHandler: Attempting to create user ${email}`);
-                wicked.apiPost('/users', userCreateInfo, (err, userInfo: WickedUserInfo) => {
+                wicked.apiPost('/users', userCreateInfo, null, (err, userInfo: WickedUserInfo) => {
                     if (err)
                         return failError(500, err, next);
 
@@ -257,7 +257,7 @@ export class LocalIdP implements IdentityProvider {
         wicked.apiPost('login', {
             username: username,
             password: password
-        }, function (err, userInfoList: WickedUserInfo[]) {
+        }, null, function (err, userInfoList: WickedUserInfo[]) {
             if (err)
                 return callback(err);
             if (!Array.isArray(userInfoList))
@@ -269,7 +269,7 @@ export class LocalIdP implements IdentityProvider {
             const userShortInfo = userInfoList[0];
             // Load the user to get all information (e.g., groups and validated status)
             debug('userInfo: ' + JSON.stringify(userShortInfo));
-            wicked.apiGet(`/users/${userShortInfo.id}`, (err, userInfo: WickedUserInfo) => {
+            wicked.apiGet(`/users/${userShortInfo.id}`, null, (err, userInfo: WickedUserInfo) => {
                 if (err)
                     return callback(err);
                 const authResponse = instance.createAuthResponse(userInfo);

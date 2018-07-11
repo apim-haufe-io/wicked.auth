@@ -3,7 +3,7 @@
 import { GenericOAuth2Router } from '../common/generic-router';
 import { IdentityProvider, IdpOptions, AuthRequest, EndpointDefinition, AuthResponseCallback, CheckRefreshCallback, AuthResponse, DummyIdpConfig } from '../common/types';
 const { debug, info, warn, error } = require('portal-env').Logger('portal-auth:local');
-const wicked = require('wicked-sdk');
+import * as wicked from 'wicked-sdk';
 
 export class DummyIdP implements IdentityProvider {
 
