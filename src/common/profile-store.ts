@@ -27,7 +27,7 @@ export class ProfileStore {
         const instance = this;
         if (this._ttlSecondsMap[apiId])
             return callback(null, this._ttlSecondsMap[apiId]);
-        wicked.apiGet(`/apis/${apiId}`, null, function (err, apiConfig: WickedApi) {
+        wicked.getApi(apiId, function (err, apiConfig) {
             if (err)
                 return callback(err);
             if (!apiConfig.settings)

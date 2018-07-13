@@ -2,11 +2,10 @@
 
 import { utils } from './utils';
 import { ExpressHandler } from './types';
-import { WickedGrantCollection, WickedApplication, WickedUserInfo, WickedApi, WickedGrant } from 'wicked-sdk';
+import { WickedGrant, WickedCollection } from 'wicked-sdk';
 import { failMessage, failError } from './utils-fail';
 const { debug, info, warn, error } = require('portal-env').Logger('portal-auth:grant-manager');
 const Router = require('express').Router;
-const qs = require('querystring');
 import * as wicked from 'wicked-sdk';
 import * as async from 'async';
 
@@ -70,7 +69,7 @@ export class GrantManager {
         const userId = authResponse.userId;
 
         debug(`renderUserScopes: Getting user ${userId} grant collection`);
-        wicked.apiGet(`/grants/${userId}`, null, function (err, userGrants: WickedGrantCollection) {
+        wicked.getUserGrants(userId, {}, function (err, userGrants) {
             if (err)
                 return failError(500, err, next);
             debug(`renderUserScopes: Successfully retrieved user grants.`)
@@ -126,12 +125,12 @@ export class GrantManager {
     }
 }
 
-function appendAppAndApiInfo(userGrants: WickedGrantCollection, callback: ExtendedGrantListCallback) {
+function appendAppAndApiInfo(userGrants: WickedCollection<WickedGrant>, callback: ExtendedGrantListCallback) {
     debug(`appendAppAndApiInfo()`);
     const grantList: ExtendedGrant[] = [];
     async.each(userGrants.items, (userGrant: WickedGrant, callback) => {
         async.parallel({
-            appInfo: callback => wicked.apiGet(`/applications/${userGrant.applicationId}`, null, function (err, appInfo: WickedApplication) {
+            appInfo: callback => wicked.getApplication(userGrant.applicationId, function (err, appInfo) {
                 if (err)
                     return callback(null, { id: userGrant.applicationId, name: '(Unknown or invalid application)' })
                 return callback(null, { id: userGrant.applicationId, name: appInfo.name });

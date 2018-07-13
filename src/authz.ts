@@ -45,7 +45,7 @@ async.series({
     init: callback => wicked.initialize(wickedOptions, callback),
     // waitForKong: callback => wicked.awaitKongOAuth2(callback),
     initMachineUser: callback => wicked.initMachineUser(authServerId, callback),
-    authServerConfig: callback => wicked.apiGet('auth-servers/' + authServerId, null, callback),
+    authServerConfig: callback => wicked.getAuthServer(authServerId, callback) //wicked.apiGet('auth-servers/' + authServerId, null, callback),
 }, function (err, results) {
     if (err) {
         error(err);

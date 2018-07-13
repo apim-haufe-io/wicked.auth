@@ -12,7 +12,7 @@ const qs = require('querystring');
 
 import { failMessage, failError, failOAuth, makeError } from './utils-fail';
 import { NameSpec, StringCallback, SimpleCallback, AuthRequest, AuthResponse, AuthSession, OidcProfile } from './types';
-import { WickedApi, WickedPool, WickedPoolCallback, WickedApiCallback } from 'wicked-sdk';
+import { WickedApi, WickedPool, Callback, WickedUserShortInfo } from 'wicked-sdk';
 
 const ERROR_TIMEOUT = 500; // ms
 
@@ -192,11 +192,11 @@ export const utils = {
 
     _apiInfoMap: {} as { [apiId: string]: { success: boolean, data?: WickedApi } },
 
-    getApiInfo: function (apiId: string, callback: WickedApiCallback): void {
+    getApiInfo: function (apiId: string, callback: Callback<WickedApi>): void {
         debug(`getApiInfo(${apiId})`);
         if (utils._apiInfoMap[apiId] && utils._apiInfoMap[apiId].success)
             return callback(null, utils._apiInfoMap[apiId].data);
-        wicked.apiGet(`/apis/${apiId}`, null, (err, apiInfo) => {
+        wicked.getApi(apiId, (err, apiInfo) => {
             if (err) {
                 utils._apiInfoMap[apiId] = {
                     success: false
@@ -226,11 +226,11 @@ export const utils = {
 
     _poolInfoMap: {} as { [poolId: string]: { success: boolean, data?: WickedPool } },
 
-    getPoolInfo: function (poolId: string, callback: WickedPoolCallback): void {
+    getPoolInfo: function (poolId: string, callback: Callback<WickedPool>): void {
         debug(`getPoolInfo(${poolId})`);
         if (utils._poolInfoMap[poolId] && utils._poolInfoMap[poolId].success)
             return callback(null, utils._poolInfoMap[poolId].data);
-        wicked.apiGet(`/pools/${poolId}`, null, (err, poolInfo) => {
+        wicked.getRegistrationPool(poolId, (err, poolInfo) => {
             if (err) {
                 utils._poolInfoMap[poolId] = {
                     success: false
@@ -245,7 +245,7 @@ export const utils = {
         });
     },
 
-    getPoolInfoByApi: function (apiId: string, callback: WickedPoolCallback) {
+    getPoolInfoByApi: function (apiId: string, callback: Callback<WickedPool>) {
         debug(`getPoolInfoByApi(${apiId})`);
         utils.getApiRegistrationPool(apiId, (err, poolId) => {
             if (err)
@@ -363,9 +363,9 @@ export const utils = {
      * @param {*} callback Returns (err, shortUserInfo), shortUserInfo may be
      * null in case the user doesn't exist, otherwise { id, customId, name, email }
      */
-    getUserByCustomId: function (customId, callback) {
+    getUserByCustomId: function (customId: string, callback: Callback<WickedUserShortInfo>): void {
         debug(`getUserByCustomId(${customId})`);
-        wicked.apiGet(`/users?customId=${qs.escape(customId)}`, null, (err, shortInfoList) => {
+        wicked.getUserByCustomId(customId, (err, shortInfoList) => {
             if (err && err.statusCode == 404) {
                 // Not found
                 return callback(null, null);

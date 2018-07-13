@@ -269,7 +269,7 @@ export class LocalIdP implements IdentityProvider {
             const userShortInfo = userInfoList[0];
             // Load the user to get all information (e.g., groups and validated status)
             debug('userInfo: ' + JSON.stringify(userShortInfo));
-            wicked.apiGet(`/users/${userShortInfo.id}`, null, (err, userInfo: WickedUserInfo) => {
+            wicked.getUser(userShortInfo.id, (err, userInfo) => {
                 if (err)
                     return callback(err);
                 const authResponse = instance.createAuthResponse(userInfo);

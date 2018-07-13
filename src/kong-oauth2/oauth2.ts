@@ -2,7 +2,7 @@
 
 import * as qs from 'querystring';
 import { SimpleCallback, StringCallback, AuthRequest, TokenRequest, OAuth2Request, AccessToken, AccessTokenCallback } from '../common/types';
-import { WickedApplication, WickedSubscription, KongApi, KongApiCallback, WickedApi, WickedApiCallback } from 'wicked-sdk';
+import { WickedApplication, WickedSubscription, KongApi, WickedApi, Callback } from 'wicked-sdk';
 const { debug, info, warn, error } = require('portal-env').Logger('portal-auth:oauth2');
 const async = require('async');
 import * as wicked from 'wicked-sdk';
@@ -858,7 +858,7 @@ function postTokenRequest(tokenRequest: TokenRequestPayload, callback: AccessTok
 
 function lookupSubscription(oauthInfo: OAuthInfo, callback: OAuthInfoCallback) {
     debug('lookupSubscription()');
-    wicked.apiGet('subscriptions/' + oauthInfo.inputData.client_id, null, function (err, subscription) {
+    wicked.getSubscriptionByClientId(oauthInfo.inputData.client_id, oauthInfo.inputData.api_id, function (err, subscription) {
         if (err)
             return failOAuth(403, 'unauthorized_client', 'invalid client_id', err, callback);
 
@@ -938,7 +938,7 @@ function getOAuth2Config(oauthInfo: OAuthInfo, callback: OAuthInfoCallback) {
 // }
 
 const _kongApis: { [apiId: string]: KongApi } = {};
-function getKongApi(apiId: string, callback: KongApiCallback) {
+function getKongApi(apiId: string, callback: Callback<KongApi>) {
     debug(`getKongApi(${apiId})`);
     if (_kongApis[apiId])
         return callback(null, _kongApis[apiId]);
@@ -951,11 +951,11 @@ function getKongApi(apiId: string, callback: KongApiCallback) {
 }
 
 const _wickedApis: { [apiId: string]: WickedApi } = {};
-function getWickedApi(apiId, callback: WickedApiCallback): void {
+function getWickedApi(apiId, callback: Callback<WickedApi>): void {
     debug(`getWickedApi(${apiId})`);
     if (_wickedApis[apiId])
         return callback(null, _wickedApis[apiId]);
-    wicked.apiGet('apis/' + apiId, null, function (err, apiData) {
+    wicked.getApi(apiId, function (err, apiData) {
         if (err)
             return callback(err);
         _wickedApis[apiId] = apiData;

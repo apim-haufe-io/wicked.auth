@@ -1,6 +1,6 @@
 'use strict';
 
-import { WickedApiScopes, WickedApi, WickedSubscriptionInfo, WickedUserInfo } from "wicked-sdk";
+import { WickedApiScopes, WickedApi, WickedSubscriptionInfo, WickedUserInfo, WickedPool } from "wicked-sdk";
 import { WickedApiScopesCallback, AuthRequest, AuthRequestCallback, SubscriptionValidationCallback, ValidatedScopesCallback, TokenRequest, SimpleCallback, TokenInfoCallback, OidcProfile, OidcProfileCallback, AccessTokenCallback, AuthResponse, SubscriptionValidation, OAuth2Request } from "./types";
 
 const async = require('async');
@@ -28,18 +28,18 @@ export class UtilsOAuth2 {
         if (this._apiScopes[apiId])
             return callback(null, this._apiScopes[apiId]);
         debug('getApiScopes: Not present in cache, fetching.');
-        wicked.apiGet(`apis/${apiId}`, null, function (err, api: WickedApi) {
+        wicked.getApi(apiId, function (err, apiInfo) {
             if (err) {
                 debug('getApiScopes: Fetching API scopes errored.');
                 debug(err);
                 return callback(err);
             }
             // TBD: Is it good to return an error here?
-            if (!api || !api.settings)
+            if (!apiInfo || !apiInfo.settings)
                 return callback(new Error(`API ${apiId} does not have settings section`));
             debug('getApiScopes: Succeeded, storing.');
-            debug('api.settings.scopes: ' + JSON.stringify(api.settings.scopes));
-            instance._apiScopes[apiId] = api.settings.scopes || {};
+            debug('api.settings.scopes: ' + JSON.stringify(apiInfo.settings.scopes));
+            instance._apiScopes[apiId] = apiInfo.settings.scopes || {};
             return callback(null, instance._apiScopes[apiId]);
         });
     };
@@ -78,7 +78,7 @@ export class UtilsOAuth2 {
 
     public validateSubscription = (oauthRequest: OAuth2Request, callback: SubscriptionValidationCallback) => {
         debug('validateSubscription()');
-        wicked.getSubscriptionByClientId(oauthRequest.client_id, oauthRequest.api_id, function (err, subsInfo: WickedSubscriptionInfo) {
+        wicked.getSubscriptionByClientId(oauthRequest.client_id, oauthRequest.api_id, (err, subsInfo) => {
             if (err)
                 return failOAuth(400, 'invalid_request', 'could not validate client_id and API subscription', err, callback);
             // Do we have a trusted subscription?
@@ -341,13 +341,13 @@ export class UtilsOAuth2 {
         // OK; we might be able to get the information from somewhere else, but let's keep
         // it simple.
         async.parallel({
-            userInfo: callback => wicked.apiGet(`/users/${userId}`, null, callback),
+            userInfo: callback => wicked.getUser(userId, callback),
             poolInfo: callback => utils.getPoolInfo(poolId, callback)
         }, function (err, results) {
             if (err)
                 return callback(err);
-            const userInfo = results.userInfo;
-            const poolInfo = results.poolInfo;
+            const userInfo = results.userInfo as WickedUserInfo;
+            const poolInfo = results.poolInfo as WickedPool;
 
             const profile = instance.wickedUserInfoToOidcProfile(userInfo);
             // Now let's see what we can map from the registration
