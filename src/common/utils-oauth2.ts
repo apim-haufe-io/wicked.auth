@@ -1,7 +1,7 @@
 'use strict';
 
-import { WickedApiScopes, WickedUserInfo, WickedPool, Callback } from "wicked-sdk";
-import { WickedApiScopesCallback, AuthRequest, SubscriptionValidationCallback, ValidatedScopes, TokenRequest, SimpleCallback, TokenInfoCallback, OidcProfile, OidcProfileCallback, AccessTokenCallback, AuthResponse, SubscriptionValidation, OAuth2Request } from "./types";
+import { OidcProfile, WickedApiScopes, WickedUserInfo, WickedPool, Callback } from "wicked-sdk";
+import { WickedApiScopesCallback, AuthRequest, SubscriptionValidationCallback, ValidatedScopes, TokenRequest, SimpleCallback, AccessTokenCallback, AuthResponse, SubscriptionValidation, OAuth2Request } from "./types";
 
 const async = require('async');
 const { debug, info, warn, error } = require('portal-env').Logger('portal-auth:utils-oauth2');

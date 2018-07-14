@@ -1,8 +1,8 @@
 'use strict';
 
 import { GenericOAuth2Router } from '../common/generic-router';
-import { AuthRequest, AuthResponse, IdentityProvider, EndpointDefinition, IdpOptions, LocalIdpConfig, CheckRefreshDecision, OidcProfile, BooleanCallback } from '../common/types';
-import { WickedUserInfo, Callback } from 'wicked-sdk';
+import { AuthRequest, AuthResponse, IdentityProvider, EndpointDefinition, IdpOptions, LocalIdpConfig, CheckRefreshDecision, BooleanCallback } from '../common/types';
+import { OidcProfile, WickedUserInfo, Callback } from 'wicked-sdk';
 const { debug, info, warn, error } = require('portal-env').Logger('portal-auth:local');
 import * as wicked from 'wicked-sdk';
 const Router = require('express').Router;

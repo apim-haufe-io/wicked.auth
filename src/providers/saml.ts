@@ -1,8 +1,8 @@
 'use strict';
 
 import { GenericOAuth2Router } from '../common/generic-router';
-import { AuthRequest, EndpointDefinition, AuthResponse, IdentityProvider, IdpOptions, SamlIdpConfig, OidcProfile, CheckRefreshDecision } from '../common/types';
-import { Callback } from 'wicked-sdk';
+import { AuthRequest, EndpointDefinition, AuthResponse, IdentityProvider, IdpOptions, SamlIdpConfig, CheckRefreshDecision } from '../common/types';
+import { OidcProfile, Callback } from 'wicked-sdk';
 const { debug, info, warn, error } = require('portal-env').Logger('portal-auth:idp');
 const Router = require('express').Router;
 const saml2 = require('saml2-js');

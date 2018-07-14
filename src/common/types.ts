@@ -1,6 +1,6 @@
 'use strict';
 
-import { WickedApiScopes, WickedSubscriptionInfo, WickedScopeGrant, WickedApi, Callback } from "wicked-sdk";
+import { OidcProfile, WickedApiScopes, WickedSubscriptionInfo, WickedScopeGrant, Callback } from "wicked-sdk";
 
 export interface OAuth2Request {
     api_id: string,
@@ -62,18 +62,6 @@ export interface AuthSession {
     tmpAuthResponse?: AuthResponse,
     registrationNonce?: string,
     grantData?: GrantProcessInfo
-};
-
-export interface OidcProfile {
-    sub: string,
-    email?: string,
-    email_verified?: boolean,
-    preferred_username?: string,
-    username?: string,
-    name?: string,
-    given_name?: string,
-    family_name?: string,
-    phone?: string
 };
 
 export interface EndpointDefinition {

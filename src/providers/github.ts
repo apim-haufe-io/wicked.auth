@@ -1,8 +1,8 @@
 'use strict';
 
 import { GenericOAuth2Router } from '../common/generic-router';
-import { IdentityProvider, IdpOptions, GithubIdpConfig, ExpressHandler, OidcProfile, AuthResponse, EndpointDefinition, AuthRequest } from '../common/types';
-import { Callback } from 'wicked-sdk';
+import { IdentityProvider, IdpOptions, GithubIdpConfig, ExpressHandler, AuthResponse, EndpointDefinition, AuthRequest } from '../common/types';
+import { OidcProfile, Callback } from 'wicked-sdk';
 const { debug, info, warn, error } = require('portal-env').Logger('portal-auth:github');
 const Router = require('express').Router;
 

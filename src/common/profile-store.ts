@@ -1,7 +1,7 @@
 'use strict';
 
-import { NumberCallback, TokenInfo, SimpleCallback, OidcProfile, TokenResponse, OidcProfileCallback } from "./types";
-import { WickedApi } from "wicked-sdk";
+import { NumberCallback, SimpleCallback, TokenResponse, OidcProfileCallback } from "./types";
+import { OidcProfile } from "wicked-sdk";
 
 const crypto = require('crypto');
 import * as wicked from 'wicked-sdk';

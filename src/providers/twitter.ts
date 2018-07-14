@@ -1,8 +1,8 @@
 'use strict';
 
 import { GenericOAuth2Router } from '../common/generic-router';
-import { IdpOptions, ExpressHandler, OidcProfile, EmailMissingHandler, TwitterIdpConfig, IdentityProvider, AuthRequest, EndpointDefinition, CheckRefreshDecision, AuthResponse } from '../common/types';
-import { Callback } from 'wicked-sdk';
+import { IdpOptions, ExpressHandler, EmailMissingHandler, TwitterIdpConfig, IdentityProvider, AuthRequest, EndpointDefinition, CheckRefreshDecision, AuthResponse } from '../common/types';
+import { OidcProfile, Callback } from 'wicked-sdk';
 const { debug, info, warn, error } = require('portal-env').Logger('portal-auth:twitter');
 const Router = require('express').Router;
 

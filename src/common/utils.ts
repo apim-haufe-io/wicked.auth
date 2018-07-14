@@ -11,8 +11,8 @@ const request = require('request');
 const qs = require('querystring');
 
 import { failMessage, failError, failOAuth, makeError } from './utils-fail';
-import { NameSpec, StringCallback, SimpleCallback, AuthRequest, AuthResponse, AuthSession, OidcProfile } from './types';
-import { WickedApi, WickedPool, Callback, WickedUserShortInfo } from 'wicked-sdk';
+import { NameSpec, StringCallback, SimpleCallback, AuthRequest, AuthResponse, AuthSession } from './types';
+import { OidcProfile, WickedApi, WickedPool, Callback, WickedUserShortInfo } from 'wicked-sdk';
 
 const ERROR_TIMEOUT = 500; // ms
 

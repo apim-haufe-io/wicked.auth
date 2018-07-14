@@ -1,8 +1,8 @@
 'use strict';
 
 import { GenericOAuth2Router } from '../common/generic-router';
-import { AuthRequest, EndpointDefinition, AuthResponse, IdentityProvider, IdpOptions, OAuth2IdpConfig, ExpressHandler, OidcProfile, CheckRefreshDecision } from '../common/types';
-import { Callback } from 'wicked-sdk';
+import { AuthRequest, EndpointDefinition, AuthResponse, IdentityProvider, IdpOptions, OAuth2IdpConfig, ExpressHandler, CheckRefreshDecision } from '../common/types';
+import { OidcProfile, Callback } from 'wicked-sdk';
 const { debug, info, warn, error } = require('portal-env').Logger('portal-auth:oauth2');
 
 const Router = require('express').Router;

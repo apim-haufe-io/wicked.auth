@@ -1,7 +1,7 @@
 'use strict';
 
 import * as async from 'async';
-import { AuthRequest, AuthResponse, OidcProfile, EmailMissingHandler, ExpressHandler, IdentityProvider, TokenRequest, AccessTokenCallback, AccessToken } from './types';
+import { AuthRequest, AuthResponse, EmailMissingHandler, ExpressHandler, IdentityProvider, TokenRequest, AccessTokenCallback, AccessToken } from './types';
 import { profileStore } from './profile-store'
 const { debug, info, warn, error } = require('portal-env').Logger('portal-auth:generic-router');
 import * as wicked from 'wicked-sdk';
@@ -15,7 +15,7 @@ const qs = require('querystring');
 import { utils } from './utils';
 import { utilsOAuth2 } from './utils-oauth2';
 import { failMessage, failError, failOAuth, makeError, failJson } from './utils-fail';
-import { WickedApiScopes, WickedGrant, WickedUserInfo, WickedUserCreateInfo, WickedScopeGrant, WickedNamespace, WickedCollection, WickedRegistration, Callback } from 'wicked-sdk';
+import { OidcProfile, WickedApiScopes, WickedGrant, WickedUserInfo, WickedUserCreateInfo, WickedScopeGrant, WickedNamespace, WickedCollection, WickedRegistration, Callback } from 'wicked-sdk';
 import { GrantManager } from './grant-manager';
 
 const ERROR_TIMEOUT = 500; // ms
@@ -859,7 +859,7 @@ export class GenericOAuth2Router {
 
     // This is called as soon as we are sure that we have a logged in user, and possibly
     // also a valid registration record (if applicable to the API). Now we also have to
-    // check the scope of the authorization request, and possible run the scopeFlow.
+    // check the scope of the authorization request, and possibly run the scopeFlow.
     private authorizeFlow(req, res, next): void {
         debug(`authorizeFlow(${this.authMethodId})`);
         const authRequest = utils.getAuthRequest(req, this.authMethodId);
