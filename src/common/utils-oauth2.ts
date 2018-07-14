@@ -1,7 +1,7 @@
 'use strict';
 
-import { WickedApiScopes, WickedApi, WickedSubscriptionInfo, WickedUserInfo, WickedPool } from "wicked-sdk";
-import { WickedApiScopesCallback, AuthRequest, AuthRequestCallback, SubscriptionValidationCallback, ValidatedScopesCallback, TokenRequest, SimpleCallback, TokenInfoCallback, OidcProfile, OidcProfileCallback, AccessTokenCallback, AuthResponse, SubscriptionValidation, OAuth2Request } from "./types";
+import { WickedApiScopes, WickedUserInfo, WickedPool, Callback } from "wicked-sdk";
+import { WickedApiScopesCallback, AuthRequest, SubscriptionValidationCallback, ValidatedScopes, TokenRequest, SimpleCallback, TokenInfoCallback, OidcProfile, OidcProfileCallback, AccessTokenCallback, AuthResponse, SubscriptionValidation, OAuth2Request } from "./types";
 
 const async = require('async');
 const { debug, info, warn, error } = require('portal-env').Logger('portal-auth:utils-oauth2');
@@ -101,12 +101,16 @@ export class UtilsOAuth2 {
         });
     };
 
-    public validateApiScopes = (apiId: string, scope: string, subIsTrusted: boolean, callback: ValidatedScopesCallback) => {
+    public validateApiScopes = (apiId: string, scope: string, subIsTrusted: boolean, callback: Callback<ValidatedScopes>) => {
         debug(`validateApiScopes(${apiId}, ${scope})`);
 
-        this.getApiScopes(apiId, function (err, apiScopes) {
+        async.parallel({
+            apiScopes: callback => this.getApiScopes(apiId, callback),
+            apiInfo: callback => utils.getApiInfo(apiId, callback),
+        }, (err, results) => {
             if (err)
                 return failError(500, err, callback);
+            const apiScopes = results.apiScopes as WickedApiScopes;
 
             let requestScope = scope;
             if (!requestScope) {

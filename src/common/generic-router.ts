@@ -1,7 +1,7 @@
 'use strict';
 
 import * as async from 'async';
-import { AuthRequest, AuthResponse, OidcProfile, EmailMissingHandler, ExpressHandler, IdentityProvider, AuthResponseCallback, TokenRequest, AccessTokenCallback, AccessToken } from './types';
+import { AuthRequest, AuthResponse, OidcProfile, EmailMissingHandler, ExpressHandler, IdentityProvider, TokenRequest, AccessTokenCallback, AccessToken } from './types';
 import { profileStore } from './profile-store'
 const { debug, info, warn, error } = require('portal-env').Logger('portal-auth:generic-router');
 import * as wicked from 'wicked-sdk';
@@ -15,7 +15,7 @@ const qs = require('querystring');
 import { utils } from './utils';
 import { utilsOAuth2 } from './utils-oauth2';
 import { failMessage, failError, failOAuth, makeError, failJson } from './utils-fail';
-import { WickedApiScopes, WickedGrant, WickedUserInfo, WickedUserCreateInfo, WickedScopeGrant, WickedNamespace, WickedCollection, WickedRegistration } from 'wicked-sdk';
+import { WickedApiScopes, WickedGrant, WickedUserInfo, WickedUserCreateInfo, WickedScopeGrant, WickedNamespace, WickedCollection, WickedRegistration, Callback } from 'wicked-sdk';
 import { GrantManager } from './grant-manager';
 
 const ERROR_TIMEOUT = 500; // ms
@@ -630,11 +630,13 @@ export class GenericOAuth2Router {
 
         // Extra TODO:
         // - Pass-through APIs do not create local users
-        this.checkUserFromAuthResponse(authResponse, (err, authResponse) => {
+        const instance = this;
+        const authRequest = utils.getAuthRequest(req, instance.authMethodId);
+        this.checkUserFromAuthResponse(authResponse, authRequest.api_id, (err, authResponse) => {
             if (err)
                 return failError(500, err, next);
 
-            const authRequest = utils.getAuthRequest(req, this.authMethodId);
+            const authRequest = utils.getAuthRequest(req, instance.authMethodId);
             if (!authRequest)
                 return failMessage(500, 'Invalid state: authRequest is missing.', next);
 
@@ -645,9 +647,9 @@ export class GenericOAuth2Router {
                 // In this case, we don't need to check for any registrations; this is actually
                 // not possible here, as there is no API to check with. We'll just continue with
                 // redirecting to the redirect_uri in the authRequest (see GET /login).
-                utils.setAuthResponse(req, this.authMethodId, authResponse);
+                utils.setAuthResponse(req, instance.authMethodId, authResponse);
 
-                debug(`continueAuthorizeFlow(${this.authMethodId}): Doing plain login/redirecting: ${authRequest.redirect_uri}`);
+                debug(`continueAuthorizeFlow(${instance.authMethodId}): Doing plain login/redirecting: ${authRequest.redirect_uri}`);
                 return res.redirect(authRequest.redirect_uri);
             }
 
@@ -656,7 +658,7 @@ export class GenericOAuth2Router {
                 return failMessage(500, 'Invalid state: API in authorization request is missing.', next);
 
             const apiId = authRequest.api_id;
-            utils.setAuthResponse(req, this.authMethodId, authResponse);
+            utils.setAuthResponse(req, instance.authMethodId, authResponse);
 
             debug('Retrieving registration info...');
             // We have an identity now, do we need registrations?
@@ -671,15 +673,17 @@ export class GenericOAuth2Router {
                         delete authResponse.registrationPool;
                     // Nope, just go ahead; use the default Profile as profile, but using the ID from wicked
                     authResponse.profile = utils.clone(authResponse.defaultProfile) as OidcProfile;
-                    authResponse.profile.sub = authResponse.userId;
-                    return this.authorizeFlow(req, res, next);
+                    // If we have a userId, use it as sub, otherwise keep the sub (passthroughUsers mode)
+                    if (authResponse.userId)
+                        authResponse.profile.sub = authResponse.userId;
+                    return instance.authorizeFlow(req, res, next);
                 }
 
                 authResponse.registrationPool = poolId;
                 debug(`API requires registration with pool '${poolId}', starting registration flow`);
 
                 // We'll do the registrationFlow first then...
-                return this.registrationFlow(poolId, req, res, next);
+                return instance.registrationFlow(poolId, req, res, next);
             });
         });
     }
@@ -859,15 +863,28 @@ export class GenericOAuth2Router {
     private authorizeFlow(req, res, next): void {
         debug(`authorizeFlow(${this.authMethodId})`);
         const authRequest = utils.getAuthRequest(req, this.authMethodId);
-        const userProfile = utils.getAuthResponse(req, this.authMethodId).profile;
 
-        if (authRequest.trusted || authRequest.scope.length === 0) {
-            // We have a trusted application, or an empty scope, we will not need to check for scope grants.
-            return this.authorizeFlow_Step2(req, res, next);
-        }
+        // Check for passthrough Scope calculation
+        utils.getApiInfo(authRequest.api_id, (err, apiInfo) => {
+            if (err)
+                return failError(500, err, next);
 
-        // return failMessage(500, 'Scope flow not yet implemented', next);
-        return this.scopeFlow(req, res, next);
+            if (authRequest.trusted || (authRequest.scope.length === 0 && !apiInfo.passthroughScopeUrl)) {
+                // We have a trusted application, or an empty scope, we will not need to check for scope grants.
+                return this.authorizeFlow_Step2(req, res, next);
+            }
+
+            // Normal case: We don't have a passthroughScopeUrl, and thus we need to go through the scopeFlow
+            if (!apiInfo.passthroughScopeUrl) {
+                return this.scopeFlow(req, res, next);
+            }
+
+            // OK, interesting, let's ask an upstream for the scope...
+            
+        })
+
+
+
     }
 
     // Here we validate the scope, check for whether the user has granted the scopes to the
@@ -883,6 +900,11 @@ export class GenericOAuth2Router {
         const apiId = authRequest.api_id;
         const clientId = authRequest.client_id;
         const desiredScopesList = authRequest.scope; // ["scope1", "scope2",...]
+
+        // TODO: passthroughScopeUrl/passthroughUser
+
+
+        // If we're not in a passthrough situation, we have a userId here        
         const userId = authResponse.userId;
 
         // Retrieve the application info for this client_id; the client_id is attached
@@ -1106,7 +1128,7 @@ export class GenericOAuth2Router {
                     // be created on the fly here, and possibly also needs a registration done
                     // automatically, if the API needs a registration. If not, it's fine as is, but
                     // the user needs a dedicated wicked local user (with a "sub" == user id)
-                    instance.checkUserFromAuthResponse(authResponse, (err, authResponse) => {
+                    instance.checkUserFromAuthResponse(authResponse, tokenRequest.api_id, (err, authResponse) => {
                         if (err) {
                             // TODO: Rethink error messages and such.
                             setTimeout(() => {
@@ -1131,55 +1153,69 @@ export class GenericOAuth2Router {
         });
     }
 
-    private checkUserFromAuthResponse(authResponse: AuthResponse, callback: AuthResponseCallback) {
-        // The Auth response contains the default profile, which may or may not
-        // match the stored profile in the wicked database. Plus that we might need to
-        // create a federated user record in case we have a good valid 3rd party user,
-        // which we want to track in the user database of wicked.
-        function loadWickedUser(userId) {
-            debug(`loadWickedUser(${userId})`);
-            wicked.getUser(userId, (err, userInfo) => {
-                if (err)
-                    return callback(err);
-                debug('loadUserAndProfile returned.');
+    private checkUserFromAuthResponse(authResponse: AuthResponse, apiId: string, callback: Callback<AuthResponse>): void {
+        debug(`checkUserFromAuthResponse(..., ${apiId})`);
+        const instance = this;
+        utils.getApiInfo(apiId, (err, apiInfo) => {
+            if (err)
+                return callback(err);
 
-                // This just fills userId.
-                // The rest is done when handling the registrations (see
-                // registrationFlow()).
-                const oidcProfile = utilsOAuth2.wickedUserInfoToOidcProfile(userInfo) as OidcProfile;
-                authResponse.userId = userId;
-                authResponse.profile = oidcProfile;
-
+            if (apiInfo.passthroughUsers) {
+                // The API doesn't need persisted users, so we are done here now.
+                debug(`checkUserFromAuthResponse: Passthrough API ${apiId}`);
+                authResponse.userId = null;
                 return callback(null, authResponse);
-            });
-        }
+            }
 
-        if (authResponse.userId) {
-            // We already have a wicked user id, load the user and fill the profile
-            return loadWickedUser(authResponse.userId);
-        } else if (authResponse.customId) {
-            // Let's check the custom ID, load by custom ID
-            utils.getUserByCustomId(authResponse.customId, (err, shortInfo) => {
-                if (err)
-                    return callback(err);
-                if (!shortInfo) {
-                    // Not found, we must create first
-                    this.createUserFromDefaultProfile(authResponse, (err, authResponse) => {
-                        if (err)
-                            return callback(err);
-                        return loadWickedUser(authResponse.userId);
-                    });
-                } else {
-                    return loadWickedUser(shortInfo.id);
-                }
-            });
-        } else {
-            return callback(new Error('checkUserFromAuthResponse: Neither customId nor userId was passed into authResponse.'));
-        }
+            // The Auth response contains the default profile, which may or may not
+            // match the stored profile in the wicked database. Plus that we might need to
+            // create a federated user record in case we have a good valid 3rd party user,
+            // which we want to track in the user database of wicked.
+            function loadWickedUser(userId) {
+                debug(`loadWickedUser(${userId})`);
+                wicked.getUser(userId, (err, userInfo) => {
+                    if (err)
+                        return callback(err);
+                    debug('loadUserAndProfile returned.');
+
+                    // This just fills userId.
+                    // The rest is done when handling the registrations (see
+                    // registrationFlow()).
+                    const oidcProfile = utilsOAuth2.wickedUserInfoToOidcProfile(userInfo) as OidcProfile;
+                    authResponse.userId = userId;
+                    authResponse.profile = oidcProfile;
+
+                    return callback(null, authResponse);
+                });
+            }
+
+            if (authResponse.userId) {
+                // We already have a wicked user id, load the user and fill the profile
+                return loadWickedUser(authResponse.userId);
+            } else if (authResponse.customId) {
+                // Let's check the custom ID, load by custom ID
+                utils.getUserByCustomId(authResponse.customId, (err, shortInfo) => {
+                    if (err)
+                        return callback(err);
+                    if (!shortInfo) {
+                        // Not found, we must create first
+                        instance.createUserFromDefaultProfile(authResponse, (err, authResponse) => {
+                            if (err)
+                                return callback(err);
+                            return loadWickedUser(authResponse.userId);
+                        });
+                    } else {
+                        return loadWickedUser(shortInfo.id);
+                    }
+                });
+            } else {
+                return callback(new Error('checkUserFromAuthResponse: Neither customId nor userId was passed into authResponse.'));
+            }
+        });
     }
 
     // Takes an authResponse, returns an authResponse
-    private createUserFromDefaultProfile(authResponse: AuthResponse, callback: AuthResponseCallback) {
+    private createUserFromDefaultProfile(authResponse: AuthResponse, callback: Callback<AuthResponse>) {
         debug('createUserFromDefaultProfile()');
         const instance = this;
         // The defaultProfile MUST contain an email address.

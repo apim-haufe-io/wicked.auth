@@ -1,7 +1,8 @@
 'use strict';
 
 import { GenericOAuth2Router } from '../common/generic-router';
-import { IdpOptions, IdentityProvider, GoogleIdpConfig, ExpressHandler, AuthResponseCallback, OidcProfile, AuthResponse, EndpointDefinition, AuthRequest, CheckRefreshCallback } from '../common/types';
+import { IdpOptions, IdentityProvider, GoogleIdpConfig, ExpressHandler, OidcProfile, AuthResponse, EndpointDefinition, AuthRequest, CheckRefreshDecision } from '../common/types';
+import { Callback } from 'wicked-sdk';
 const { debug, info, warn, error } = require('portal-env').Logger('portal-auth:github');
 const Router = require('express').Router;
 
@@ -84,14 +85,14 @@ export class GoogleIdP implements IdentityProvider {
         ];
     };
 
-    public authorizeByUserPass(user: string, pass: string, callback: AuthResponseCallback) {
+    public authorizeByUserPass(user: string, pass: string, callback: Callback<AuthResponse>) {
         // Verify username and password, if possible.
         // For Google, this is not possible, so we will just return an
         // error message.
         return failOAuth(400, 'unsupported_grant_type', 'Google does not support authorizing headless with username and password', callback);
     }
 
-    public checkRefreshToken(tokenInfo, callback: CheckRefreshCallback) {
+    public checkRefreshToken(tokenInfo, callback: Callback<CheckRefreshDecision>) {
         // Decide whether it's okay to refresh this token or not, e.g.
         // by checking that the user is still valid in your database or such;
         // for 3rd party IdPs, this may be tricky. For Github, we will just allow it.
@@ -101,7 +102,7 @@ export class GoogleIdP implements IdentityProvider {
     };
 
     // Instance function, on purpose; this is used as a passport callback
-    private verifyProfile = (accessToken, refreshToken, profile, done: AuthResponseCallback) => {
+    private verifyProfile = (accessToken, refreshToken, profile, done: Callback<AuthResponse>) => {
         debug('Google Authentication succeeded.');
         // We'll always accept Google Identities, no matter what.
         this.createAuthResponse(profile, function (err, authResponse) {
@@ -116,7 +117,7 @@ export class GoogleIdP implements IdentityProvider {
         });
     };
 
-    private createAuthResponse(profile, callback: AuthResponseCallback): void {
+    private createAuthResponse(profile, callback: Callback<AuthResponse>): void {
         debug(`createAuthResponse()`);
         const email = this.getEmail(profile);
         const email_verified = !!email;

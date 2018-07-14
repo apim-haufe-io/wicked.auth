@@ -1,7 +1,8 @@
 'use strict';
 
 import { GenericOAuth2Router } from '../common/generic-router';
-import { AuthRequest, EndpointDefinition, AuthResponseCallback, CheckRefreshCallback, AuthResponse, IdentityProvider, IdpOptions } from '../common/types';
+import { AuthRequest, EndpointDefinition, AuthResponse, IdentityProvider, IdpOptions, CheckRefreshDecision } from '../common/types';
+import { Callback } from 'wicked-sdk';
 const { debug, info, warn, error } = require('portal-env').Logger('portal-auth:idp');
 const Router = require('express').Router;
 
@@ -85,7 +86,7 @@ export class IdP implements IdentityProvider {
      * @param {*} pass Password
      * @param {*} callback Callback method, `function(err, authenticationData)`
      */
-    public authorizeByUserPass(user: string, pass: string, callback: AuthResponseCallback) {
+    public authorizeByUserPass(user: string, pass: string, callback: Callback<AuthResponse>) {
         // Verify username and password, if possible.
         // Otherwise (for IdPs where this is not possible), return
         // an error with a reason. Use utils.failOAuth to create
@@ -95,7 +96,7 @@ export class IdP implements IdentityProvider {
         return callback(null, this.getAuthResponse());
     };
 
-    public checkRefreshToken(tokenInfo, callback: CheckRefreshCallback) {
+    public checkRefreshToken(tokenInfo, callback: Callback<CheckRefreshDecision>) {
         // Decide whether it's okay to refresh this token or not, e.g.
         // by checking that the user is still valid in your database or such;
         // for 3rd party IdPs, this may be tricky.

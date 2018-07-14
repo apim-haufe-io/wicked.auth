@@ -1,7 +1,8 @@
 'use strict';
 
 import { GenericOAuth2Router } from '../common/generic-router';
-import { IdpOptions, ExpressHandler, AuthResponseCallback, OidcProfile, EmailMissingHandler, TwitterIdpConfig, IdentityProvider, AuthRequest, EndpointDefinition, CheckRefreshCallback, AuthSession } from '../common/types';
+import { IdpOptions, ExpressHandler, OidcProfile, EmailMissingHandler, TwitterIdpConfig, IdentityProvider, AuthRequest, EndpointDefinition, CheckRefreshDecision, AuthResponse } from '../common/types';
+import { Callback } from 'wicked-sdk';
 const { debug, info, warn, error } = require('portal-env').Logger('portal-auth:twitter');
 const Router = require('express').Router;
 
@@ -105,14 +106,14 @@ export class TwitterIdP implements IdentityProvider {
         ];
     };
 
-    public authorizeByUserPass(user: string, pass: string, callback: AuthResponseCallback) {
+    public authorizeByUserPass(user: string, pass: string, callback: Callback<AuthResponse>) {
         // Verify username and password, if possible.
         // For Twitter, this is not possible, so we will just return an
         // error message.
         return failOAuth(400, 'unsupported_grant_type', 'Twitter does not support authorizing headless with username and password', callback);
     }
 
-    public checkRefreshToken = (tokenInfo, callback: CheckRefreshCallback) => {
+    public checkRefreshToken = (tokenInfo, callback: Callback<CheckRefreshDecision>) => {
         // Decide whether it's okay to refresh this token or not, e.g.
         // by checking that the user is still valid in your database or such;
         // for 3rd party IdPs, this may be tricky. For Twitter, we will just allow it.
@@ -126,7 +127,7 @@ export class TwitterIdP implements IdentityProvider {
     // ========================
 
     // Instance function, on purpose; this is used as a passport callback
-    private verifyProfile = (token, tokenSecret, profile, done: AuthResponseCallback) => {
+    private verifyProfile = (token, tokenSecret, profile, done: Callback<AuthResponse>) => {
         debug('Twitter Authentication succeeded.');
         this.createAuthResponse(profile, token, tokenSecret, function (err, authResponse) {
             if (err) {
@@ -140,7 +141,7 @@ export class TwitterIdP implements IdentityProvider {
         });
     };
 
-    private createAuthResponse(profile, token: string, tokenSecret: string, callback: AuthResponseCallback): void {
+    private createAuthResponse(profile, token: string, tokenSecret: string, callback: Callback<AuthResponse>): void {
         debug('normalizeProfile()');
 
         const nameGuess = utils.splitName(profile.displayName, profile.username);

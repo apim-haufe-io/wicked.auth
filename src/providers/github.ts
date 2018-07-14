@@ -1,7 +1,8 @@
 'use strict';
 
 import { GenericOAuth2Router } from '../common/generic-router';
-import { IdentityProvider, IdpOptions, GithubIdpConfig, ExpressHandler, AuthResponseCallback, OidcProfile, AuthResponse, EndpointDefinition, AuthRequest } from '../common/types';
+import { IdentityProvider, IdpOptions, GithubIdpConfig, ExpressHandler, OidcProfile, AuthResponse, EndpointDefinition, AuthRequest } from '../common/types';
+import { Callback } from 'wicked-sdk';
 const { debug, info, warn, error } = require('portal-env').Logger('portal-auth:github');
 const Router = require('express').Router;
 
@@ -120,7 +121,7 @@ export class GithubIdP implements IdentityProvider {
     // HELPER METHODS
     // ========================
 
-    private createAuthResponse(profile: any, accessToken: string, callback: AuthResponseCallback) {
+    private createAuthResponse(profile: any, accessToken: string, callback: Callback<AuthResponse>) {
         debug('createAuthResponse()');
         debug(profile);
         const instance = this;
@@ -199,7 +200,7 @@ export class GithubIdP implements IdentityProvider {
     // Instance function, see
     // https://github.com/Microsoft/TypeScript/wiki/%27this%27-in-TypeScript
     // This is used as a callback, this is why this is needed
-    private verifyProfile = (accessToken: string, refreshToken: string, profile: any, done: AuthResponseCallback) => {
+    private verifyProfile = (accessToken: string, refreshToken: string, profile: any, done: Callback<AuthResponse>) => {
         debug('verifyProfile()');
         this.createAuthResponse(profile, accessToken, function (err, authResponse) {
             debug('callback normalizeProfile()');

@@ -1,7 +1,8 @@
 'use strict';
 
 import { GenericOAuth2Router } from '../common/generic-router';
-import { AuthRequest, EndpointDefinition, AuthResponseCallback, CheckRefreshCallback, AuthResponse, IdentityProvider, IdpOptions, SamlIdpConfig, OidcProfile } from '../common/types';
+import { AuthRequest, EndpointDefinition, AuthResponse, IdentityProvider, IdpOptions, SamlIdpConfig, OidcProfile, CheckRefreshDecision } from '../common/types';
+import { Callback } from 'wicked-sdk';
 const { debug, info, warn, error } = require('portal-env').Logger('portal-auth:idp');
 const Router = require('express').Router;
 const saml2 = require('saml2-js');
@@ -143,7 +144,7 @@ export class SamlIdP implements IdentityProvider {
         }
     }
 
-    private createAuthResponse(samlResponse, callback: AuthResponseCallback): void {
+    private createAuthResponse(samlResponse, callback: Callback<AuthResponse>): void {
         debug(`createAuthResponse()`);
         const defaultProfile = this.buildProfile(samlResponse);
         if (!defaultProfile.sub)
@@ -170,12 +171,12 @@ export class SamlIdP implements IdentityProvider {
      * @param {*} pass Password
      * @param {*} callback Callback method, `function(err, authenticationData)`
      */
-    public authorizeByUserPass(user: string, pass: string, callback: AuthResponseCallback) {
+    public authorizeByUserPass(user: string, pass: string, callback: Callback<AuthResponse>) {
         debug('authorizeByUserPass()');
         return failOAuth(400, 'unsupported_grant_type', 'SAML does not support authorizing headless with username and password', callback);
     };
 
-    public checkRefreshToken(tokenInfo, callback: CheckRefreshCallback) {
+    public checkRefreshToken(tokenInfo, callback: Callback<CheckRefreshDecision>) {
         // Decide whether it's okay to refresh this token or not, e.g.
         // by checking that the user is still valid in your database or such;
         // for 3rd party IdPs, this may be tricky.

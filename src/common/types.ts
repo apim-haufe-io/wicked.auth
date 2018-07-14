@@ -1,6 +1,6 @@
-import { WickedApiScopes, WickedSubscriptionInfo, WickedScopeGrant } from "wicked-sdk";
-
 'use strict';
+
+import { WickedApiScopes, WickedSubscriptionInfo, WickedScopeGrant, WickedApi, Callback } from "wicked-sdk";
 
 export interface OAuth2Request {
     api_id: string,
@@ -51,10 +51,6 @@ export interface AuthResponse {
     profile?: OidcProfile
 }
 
-export interface AuthResponseCallback {
-    (err, authResponse?: AuthResponse): void
-};
-
 export interface GrantProcessInfo {
     missingGrants: string[],
     existingGrants: WickedScopeGrant[]
@@ -91,17 +87,13 @@ export interface CheckRefreshDecision {
     allowRefresh: boolean
 };
 
-export interface CheckRefreshCallback {
-    (err, checkRefreshDecision?: CheckRefreshDecision): void
-};
-
 export interface IdentityProvider {
     getType: () => string,
     getRouter: () => any,
     authorizeWithUi: (req, res, next, authRequest: AuthRequest) => void,
     endpoints: () => EndpointDefinition[],
-    authorizeByUserPass: (user: string, pass: string, callback: AuthResponseCallback) => void,
-    checkRefreshToken: (tokenInfo, callback: CheckRefreshCallback) => void
+    authorizeByUserPass: (user: string, pass: string, callback: Callback<AuthResponse>) => void,
+    checkRefreshToken: (tokenInfo, callback: Callback<CheckRefreshDecision>) => void
 };
 
 export interface IdpOptions {
@@ -256,9 +248,9 @@ export interface ValidatedScopes {
     validatedScopes: string[]
 };
 
-export interface ValidatedScopesCallback {
-    (err, validatedScopes?: ValidatedScopes): void
-};
+// export interface ValidatedScopesCallback {
+//     (err, validatedScopes?: ValidatedScopes): void
+// };
 
 export interface StringCallback {
     (err, s?: string): void

@@ -1,9 +1,10 @@
 'use strict';
 
 import { GenericOAuth2Router } from '../common/generic-router';
-import { IdentityProvider, IdpOptions, AuthRequest, EndpointDefinition, AuthResponseCallback, CheckRefreshCallback, AuthResponse, DummyIdpConfig } from '../common/types';
+import { IdentityProvider, IdpOptions, AuthRequest, EndpointDefinition, CheckRefreshDecision, AuthResponse, DummyIdpConfig } from '../common/types';
 const { debug, info, warn, error } = require('portal-env').Logger('portal-auth:local');
 import * as wicked from 'wicked-sdk';
+import { Callback } from 'wicked-sdk';
 
 export class DummyIdP implements IdentityProvider {
 
@@ -63,13 +64,13 @@ export class DummyIdP implements IdentityProvider {
         this.genericFlow.continueAuthorizeFlow(req, res, next, authResponse);
     }
 
-    public authorizeByUserPass = (user, pass, callback: AuthResponseCallback) => {
+    public authorizeByUserPass = (user, pass, callback: Callback<AuthResponse>) => {
         debug('authorizeByUserPass()');
 
         return callback(null, this.getDummyAuthResponse());
     };
 
-    public checkRefreshToken(tokenInfo, callback: CheckRefreshCallback) {
+    public checkRefreshToken(tokenInfo, callback: Callback<CheckRefreshDecision>) {
         debug('checkRefreshToken()');
         // Decide whether it's okay to refresh this token or not, e.g.
         // by checking that the user is still valid in your database or such;

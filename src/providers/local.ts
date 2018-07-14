@@ -1,8 +1,8 @@
 'use strict';
 
 import { GenericOAuth2Router } from '../common/generic-router';
-import { AuthRequest, AuthResponse, IdentityProvider, EndpointDefinition, IdpOptions, LocalIdpConfig, AuthResponseCallback, CheckRefreshCallback, OidcProfile, BooleanCallback } from '../common/types';
-import { WickedUserInfo } from 'wicked-sdk';
+import { AuthRequest, AuthResponse, IdentityProvider, EndpointDefinition, IdpOptions, LocalIdpConfig, CheckRefreshDecision, OidcProfile, BooleanCallback } from '../common/types';
+import { WickedUserInfo, Callback } from 'wicked-sdk';
 const { debug, info, warn, error } = require('portal-env').Logger('portal-auth:local');
 import * as wicked from 'wicked-sdk';
 const Router = require('express').Router;
@@ -41,7 +41,7 @@ export class LocalIdP implements IdentityProvider {
         this.renderLogin(req, res, next, null);
     }
 
-    public authorizeByUserPass(user, pass, callback: AuthResponseCallback) {
+    public authorizeByUserPass(user, pass, callback: Callback<AuthResponse>) {
         debug('authorizeByUserPass()');
 
         // loginUser already returns an authResponse, so we can just
@@ -49,7 +49,7 @@ export class LocalIdP implements IdentityProvider {
         return this.loginUser(user, pass, callback);
     }
 
-    public checkRefreshToken(tokenInfo, callback: CheckRefreshCallback) {
+    public checkRefreshToken(tokenInfo, callback: Callback<CheckRefreshDecision>) {
         debug('checkRefreshToken()');
         // Decide whether it's okay to refresh this token or not, e.g.
         // by checking that the user is still valid in your database or such;
@@ -251,7 +251,7 @@ export class LocalIdP implements IdentityProvider {
         })
     }
 
-    private loginUser(username: string, password: string, callback: AuthResponseCallback) {
+    private loginUser(username: string, password: string, callback: Callback<AuthResponse>) {
         debug('loginUser()');
         const instance = this;
         wicked.apiPost('login', {
