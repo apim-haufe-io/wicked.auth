@@ -5,6 +5,7 @@ import { AuthRequest, AuthResponse, EmailMissingHandler, ExpressHandler, Identit
 import { profileStore } from './profile-store'
 const { debug, info, warn, error } = require('portal-env').Logger('portal-auth:generic-router');
 import * as wicked from 'wicked-sdk';
+import * as request from 'request';
 
 import { oauth2 } from '../kong-oauth2/oauth2';
 import { tokens } from '../kong-oauth2/tokens';
@@ -15,7 +16,7 @@ const qs = require('querystring');
 import { utils } from './utils';
 import { utilsOAuth2 } from './utils-oauth2';
 import { failMessage, failError, failOAuth, makeError, failJson } from './utils-fail';
-import { OidcProfile, WickedApiScopes, WickedGrant, WickedUserInfo, WickedUserCreateInfo, WickedScopeGrant, WickedNamespace, WickedCollection, WickedRegistration, Callback } from 'wicked-sdk';
+import { OidcProfile, WickedApiScopes, WickedGrant, WickedUserInfo, WickedUserCreateInfo, WickedScopeGrant, WickedNamespace, WickedCollection, WickedRegistration, PassthroughScopeResponse, Callback, PassthroughScopeRequest } from 'wicked-sdk';
 import { GrantManager } from './grant-manager';
 
 const ERROR_TIMEOUT = 500; // ms
@@ -863,28 +864,68 @@ export class GenericOAuth2Router {
     private authorizeFlow(req, res, next): void {
         debug(`authorizeFlow(${this.authMethodId})`);
         const authRequest = utils.getAuthRequest(req, this.authMethodId);
+        const authResponse = utils.getAuthResponse(req, this.authMethodId);
 
         // Check for passthrough Scope calculation
+        const instance = this;
         utils.getApiInfo(authRequest.api_id, (err, apiInfo) => {
             if (err)
                 return failError(500, err, next);
 
             if (authRequest.trusted || (authRequest.scope.length === 0 && !apiInfo.passthroughScopeUrl)) {
                 // We have a trusted application, or an empty scope, we will not need to check for scope grants.
-                return this.authorizeFlow_Step2(req, res, next);
+                return instance.authorizeFlow_Step2(req, res, next);
             }
 
             // Normal case: We don't have a passthroughScopeUrl, and thus we need to go through the scopeFlow
             if (!apiInfo.passthroughScopeUrl) {
-                return this.scopeFlow(req, res, next);
+                return instance.scopeFlow(req, res, next);
             }
 
             // OK, interesting, let's ask an upstream for the scope...
-            
+            instance.resolvePassthroughScope(authRequest, authResponse, apiInfo.passthroughScopeUrl, (err, scopeResponse: PassthroughScopeResponse) => {
+                if (err)
+                    return failError(500, err, next);
+                if (!scopeResponse.allow) {
+                    let msg = 'Scope validation with external system disallowed login';
+                    if (scopeResponse.error_message)
+                        msg += `: ${scopeResponse.error_message}`;
+                    return failMessage(403, msg, next);
+                }
+
+                if (scopeResponse.authenticated_scope)
+                    authRequest.scope = scopeResponse.authenticated_scope;
+                else
+                    authRequest.scope = [];
+                if (scopeResponse.authenticated_userid)
+                    authResponse.profile.sub = scopeResponse.authenticated_userid;
+                
+                // And off we go
+                return instance.authorizeFlow_Step2(req, res, next);
+            });
+
         })
+    }
 
-
-
+    private resolvePassthroughScope(authRequest: AuthRequest, authResponse: AuthResponse, url: string, callback: Callback<PassthroughScopeResponse>): void {
+        debug(`resolvePassthroughScope()`);
+        const scopeRequest: PassthroughScopeRequest = {
+            scope: authRequest.scope,
+            profile: authResponse.profile
+        }
+        request.post({
+            url: url,
+            body: scopeRequest,
+            json: true,
+            timeout: 5000
+        }, (err, res, body) => {
+            if (err)
+                return callback(err);
+            if (res.statusCode < 200 || res.statusCode > 299)
+                return callback(makeError('Scope resolving via external service failed with unexpected status code.', res.statusCode));
+            const scopeResponse = utils.getJson(body) as PassthroughScopeResponse;
+            return callback(null, scopeResponse)
+        });
     }
 
     // Here we validate the scope, check for whether the user has granted the scopes to the
@@ -901,10 +942,8 @@ export class GenericOAuth2Router {
         const clientId = authRequest.client_id;
         const desiredScopesList = authRequest.scope; // ["scope1", "scope2",...]
 
-        // TODO: passthroughScopeUrl/passthroughUser
-
-
-        // If we're not in a passthrough situation, we have a userId here        
+        // If we're not in a passthrough situation, we have a userId here (and we're not,
+        // that's checked in authorizeFlow).
         const userId = authResponse.userId;
 
         // Retrieve the application info for this client_id; the client_id is attached
