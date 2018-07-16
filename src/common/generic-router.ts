@@ -739,7 +739,7 @@ export class GenericOAuth2Router {
                 }
 
                 if (!regInfo) {
-                    if (poolInfo.disallowRegister) {
+                    if (poolInfo.disableRegister) {
                         return failMessage(403, 'Registration is not allowed, only pre-registered users can access this API.', next);
                     }
                     // User does not have a registration here, we need to get one

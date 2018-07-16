@@ -90,7 +90,7 @@ export interface IdpOptions {
 };
 
 export interface LocalIdpConfig {
-    disallowSignup: boolean,
+    disableSignup: boolean,
     trustUsers: boolean
 };
 

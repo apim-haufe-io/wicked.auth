@@ -147,10 +147,10 @@ export class LocalIdP implements IdentityProvider {
 
         // Is signup allowed for this API/auth method combination?
         const apiId = utils.getAuthRequest(req, this.authMethodId).api_id;
-        this.checkSignupDisallowed(apiId, (err, disallowSignup) => {
+        this.checkSignupDisabled(apiId, (err, disableSignup) => {
             if (err)
                 return failError(500, err, next);
-            if (disallowSignup)
+            if (disableSignup)
                 return failMessage(403, 'Signup is not allowed for this API or Authentication Method.', next);
 
             // Recaptcha?
@@ -189,7 +189,7 @@ export class LocalIdP implements IdentityProvider {
         });
     };
 
-    private checkSignupDisallowed(apiId: string, callback: BooleanCallback) {
+    private checkSignupDisabled(apiId: string, callback: BooleanCallback) {
         debug(`checkSignupAllowed(${apiId})`);
         const instance = this;
         // This looks complicated, but we must find out whether signing up for using
@@ -205,12 +205,12 @@ export class LocalIdP implements IdentityProvider {
                 utils.getPoolInfo(poolId, (err, poolInfo) => {
                     if (err)
                         return callback(err);
-                    const disallowSignup = !!instance.authMethodConfig.disallowSignup || !!poolInfo.disallowRegister;
-                    return callback(null, disallowSignup);
+                    const disableSignup = !!instance.authMethodConfig.disableSignup || !!poolInfo.disableRegister;
+                    return callback(null, disableSignup);
                 });
             } else {
-                const disallowSignup = !!instance.authMethodConfig.disallowSignup;
-                return callback(null, disallowSignup);
+                const disableSignup = !!instance.authMethodConfig.disableSignup;
+                return callback(null, disableSignup);
             }
         });
     }
@@ -220,12 +220,12 @@ export class LocalIdP implements IdentityProvider {
         const authRequest = utils.getAuthRequest(req, this.authMethodId);
         const instance = this;
 
-        this.checkSignupDisallowed(authRequest.api_id, (err, disallowSignup) => {
+        this.checkSignupDisabled(authRequest.api_id, (err, disableSignup) => {
             if (err)
                 return failError(500, err, next);
             const viewModel = utils.createViewModel(req, instance.authMethodId);
             viewModel.errorMessage = flashMessage;
-            viewModel.disallowSignup = disallowSignup;
+            viewModel.disableSignup = disableSignup;
             if (prefillUsername)
                 viewModel.prefillUsername = prefillUsername;
             res.render('login', viewModel);
@@ -238,11 +238,11 @@ export class LocalIdP implements IdentityProvider {
         const authRequest = utils.getAuthRequest(req, this.authMethodId);
         const instance = this;
 
-        this.checkSignupDisallowed(authRequest.api_id, (err, disallowSignup) => {
+        this.checkSignupDisabled(authRequest.api_id, (err, disableSignup) => {
             if (err)
                 return failError(500, err, next);
 
-            if (disallowSignup)
+            if (disableSignup)
                 return failMessage(403, 'Signup is not allowed.', next);
 
             const viewModel = utils.createViewModel(req, this.authMethodId);
