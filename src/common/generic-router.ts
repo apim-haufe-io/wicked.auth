@@ -1222,7 +1222,7 @@ export class GenericOAuth2Router {
                                         } else {
                                             // Case 2: Namespace required
                                             // Here we change the authenticated_userid slightly to carry both the sub and namespace information
-                                            let authenticatedUserId = `sub:${authResponse.userId};namespaces=`;
+                                            let authenticatedUserId = `sub=${authResponse.userId};namespaces=`;
                                             let first = true;
                                             for (let i = 0; i < userRegs.items.length; ++i) {
                                                 if (!first)
