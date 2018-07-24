@@ -3,6 +3,7 @@
 const cors = require('cors');
 const { debug, info, warn, error } = require('portal-env').Logger('portal-auth:utils');
 import * as wicked from 'wicked-sdk';
+const async = require('async');
 const crypto = require('crypto');
 const url = require('url');
 const fs = require('fs');
@@ -253,6 +254,21 @@ export const utils = {
             if (!poolId)
                 return callback(makeError(`API ${apiId} does not have a registration pool`, 500));
             utils.getPoolInfo(poolId, callback);
+        });
+    },
+
+    getApiAndPoolInfo: function (apiId: string, callback: Callback<{ apiInfo: WickedApi, poolInfo: WickedPool }>) {
+        debug(`getApiAndPoolInfo(${apiId})`);
+        async.parallel({
+            apiInfo: callback => utils.getApiInfo(apiId, callback),
+            poolInfo: callback => utils.getPoolInfoByApi(apiId, callback)
+        }, function (err, results) {
+            if (err)
+                return callback(err);
+            return callback(null, {
+                apiInfo: results.apiInfo,
+                poolInfo: results.poolInfo
+            });
         });
     },
 

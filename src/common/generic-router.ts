@@ -899,7 +899,7 @@ export class GenericOAuth2Router {
                     authRequest.scope = [];
                 if (scopeResponse.authenticated_userid)
                     authResponse.profile.sub = scopeResponse.authenticated_userid;
-                
+
                 // And off we go
                 return instance.authorizeFlow_Step2(req, res, next);
             });
@@ -1176,16 +1176,70 @@ export class GenericOAuth2Router {
                             return;
                         }
 
-                        // TODO: Check registration status - This can only work for APIs which need
-                        // a registration if the user already *is* registered. OR: See above, in certain
-                        // LDAP cases (configurable?) all registration data may already be taken from the
-                        // default profile, and we're fine. This has to be checked what is (legally) allowed
-                        // and what is (technically) possible.
+                        // Now we want to check the registration status of this user with respect to
+                        // the API; in case the API does not have a registration pool set, we're done.
+                        // If it does, we have to distinguish the two cases "requires namespace" or
+                        // "does not require namespace". In case there is no namespace required, the
+                        // user *must* have a registration for the pool for this to succeed. In case
+                        // the pool requires a namespace, the request will still succeed even if there
+                        // aren't any registrations, but the list of associated namespaces is empty.
+                        // The created authenticated_userid is also differing depending on the case.
+                        utils.getApiInfo(tokenRequest.api_id, (err, apiInfo) => {
+                            if (err) {
+                                error(err);
+                                return failOAuth(err.statusCode, 'server_error', 'could not retrieve API information', callback);
+                            }
 
-                        // This was fine. Now check if we can issue a token.
-                        tokenRequest.authenticated_userid = authResponse.userId;
-                        tokenRequest.session_data = authResponse.profile;
-                        return oauth2.token(tokenRequest, callback);
+                            // Does this API have a registration pool at all?
+                            if (!apiInfo.registrationPool) {
+                                // No, this is fine. Now check if we can issue a token.
+                                tokenRequest.authenticated_userid = authResponse.userId;
+                                tokenRequest.session_data = authResponse.profile;
+                                return oauth2.token(tokenRequest, callback);
+                            } else {
+                                // OK, we have a registration pool, let's investigate further.
+                                utils.getPoolInfo(apiInfo.registrationPool, (err, poolInfo) => {
+                                    if (err)
+                                        return failOAuth(err.statusCode, 'server_error', 'could not retrieve registration pool information', callback);
+                                    // Then let's also retrieve the registrations for this user
+                                    debug(`tokenPasswordGrant: Get user registrations for user ${authResponse.userId} and pool ${poolInfo.id}`)
+                                    wicked.getUserRegistrations(poolInfo.id, authResponse.userId, (err, userRegs) => {
+                                        if (err)
+                                            return failOAuth(err.statusCode, 'server_error', 'could not retrieve user registrations', callback);
+                                        // Case 1: No namespace required
+                                        if (!poolInfo.requiresNamespace) {
+                                            debug('tokenPasswordGrant: No namespace required, checking for registrations.');
+                                            // Just check whether we have a registration
+                                            if (userRegs.items.length <= 0) {
+                                                // Naw, not good.
+                                                return failOAuth(403, 'access_denied', 'accessing this API requires an existing user registration', callback);
+                                            }
+                                            // OK, we're fine.
+                                            debug('tokenPasswordGrant: Success so far, issuing token.');
+                                            tokenRequest.authenticated_userid = authResponse.userId;
+                                            tokenRequest.session_data = authResponse.profile;
+                                            return oauth2.token(tokenRequest, callback);
+                                        } else {
+                                            // Case 2: Namespace required
+                                            // Here we change the authenticated_userid slightly to carry both the sub and namespace information
+                                            let authenticatedUserId = `sub:${authResponse.userId};namespaces=`;
+                                            let first = true;
+                                            for (let i = 0; i < userRegs.items.length; ++i) {
+                                                if (!first)
+                                                    authenticatedUserId += ',';
+                                                authenticatedUserId += userRegs.items[i].namespace;
+                                                first = false;
+                                            }
+                                            debug(`tokenPasswordGrant: Namespace required; authenticated_userid=${authenticatedUserId}`)
+                                            debug('tokenPasswordGrant: Success so far, issuing token.');
+                                            tokenRequest.authenticated_userid = authenticatedUserId;
+                                            tokenRequest.session_data = authResponse.profile;
+                                            return oauth2.token(tokenRequest, callback);
+                                        }
+                                    });
+                                });
+                            }
+                        })
                     });
                 });
             });
