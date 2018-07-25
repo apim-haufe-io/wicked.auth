@@ -14,6 +14,7 @@ const Router = require('express').Router;
 const qs = require('querystring');
 
 import { utils } from './utils';
+import { kongUtils } from '../kong-oauth2/kong-utils';
 import { utilsOAuth2 } from './utils-oauth2';
 import { failMessage, failError, failOAuth, makeError, failJson } from './utils-fail';
 import { OidcProfile, WickedApiScopes, WickedGrant, WickedUserInfo, WickedUserCreateInfo, WickedScopeGrant, WickedNamespace, WickedCollection, WickedRegistration, PassthroughScopeResponse, Callback, PassthroughScopeRequest } from 'wicked-sdk';
@@ -883,7 +884,7 @@ export class GenericOAuth2Router {
             }
 
             // OK, interesting, let's ask an upstream for the scope...
-            instance.resolvePassthroughScope(authRequest, authResponse, apiInfo.passthroughScopeUrl, (err, scopeResponse: PassthroughScopeResponse) => {
+            instance.resolvePassthroughScope(authRequest.scope, authResponse.profile, apiInfo.passthroughScopeUrl, (err, scopeResponse: PassthroughScopeResponse) => {
                 if (err)
                     return failError(500, err, next);
                 if (!scopeResponse.allow) {
@@ -903,15 +904,14 @@ export class GenericOAuth2Router {
                 // And off we go
                 return instance.authorizeFlow_Step2(req, res, next);
             });
-
-        })
+        });
     }
 
-    private resolvePassthroughScope(authRequest: AuthRequest, authResponse: AuthResponse, url: string, callback: Callback<PassthroughScopeResponse>): void {
+    private resolvePassthroughScope(scope: any, profile: OidcProfile, url: string, callback: Callback<PassthroughScopeResponse>): void {
         debug(`resolvePassthroughScope()`);
         const scopeRequest: PassthroughScopeRequest = {
-            scope: authRequest.scope,
-            profile: authResponse.profile
+            scope: scope,
+            profile: profile
         }
         request.post({
             url: url,
@@ -1100,10 +1100,41 @@ export class GenericOAuth2Router {
         };
     };
 
+    private static mergeUserGroupScope(scope: any, groups: string[]): any {
+        debug(`addUserGroupScope(${groups ? groups.toString() : '[]'})`);
+        if (!groups)
+            return scope;
+        if (groups.length === 0)
+            return scope;
+        let returnScope = null;
+        if (scope && typeof (scope) === 'string') {
+            debug('scope is a string');
+            returnScope = scope;
+            if (!!returnScope)
+                returnScope += ' ';
+            let first = true;
+            for (let i = 0; i < groups.length; ++i) {
+                if (!first)
+                    returnScope += ' ';
+                returnScope += `wicked:${groups[i]}`;
+                first = false;
+            }
+        } else if ((scope && Array.isArray(scope)) || !scope) {
+            if (!scope)
+                returnScope = [];
+            else
+                returnScope = scope;
+            for (let i=0; i< groups.length; ++i)
+                returnScope.push(`wicked:${groups[i]}`);
+        }
+        return returnScope;
+    }
+
     private authorizeFlow_Step2(req, res, next): void {
         debug(`authorizeFlow_Step2(${this.authMethodId})`);
         const authRequest = utils.getAuthRequest(req, this.authMethodId);
-        const userProfile = utils.getAuthResponse(req, this.authMethodId).profile;
+        const authResponse = utils.getAuthResponse(req, this.authMethodId);
+        const userProfile = authResponse.profile;
         debug('/authorize/login: Calling authorization end point.');
         debug(userProfile);
         oauth2.authorize({
@@ -1111,8 +1142,8 @@ export class GenericOAuth2Router {
             authenticated_userid: userProfile.sub,
             api_id: authRequest.api_id,
             client_id: authRequest.client_id,
+            scope: GenericOAuth2Router.mergeUserGroupScope(authRequest.scope, authResponse.groups),
             auth_method: req.app.get('server_name') + ':' + this.authMethodId,
-            scope: authRequest.scope
         }, function (err, redirectUri) {
             debug('/authorize/login: Authorization end point returned.');
             if (err)
@@ -1175,6 +1206,7 @@ export class GenericOAuth2Router {
                             }, 500);
                             return;
                         }
+                        tokenRequest.scope = GenericOAuth2Router.mergeUserGroupScope(tokenRequest.scope, authResponse.groups);
 
                         // Now we want to check the registration status of this user with respect to
                         // the API; in case the API does not have a registration pool set, we're done.
@@ -1257,6 +1289,7 @@ export class GenericOAuth2Router {
                 // The API doesn't need persisted users, so we are done here now.
                 debug(`checkUserFromAuthResponse: Passthrough API ${apiId}`);
                 authResponse.userId = null;
+                authResponse.groups = [];
                 return callback(null, authResponse);
             }
 
@@ -1277,6 +1310,7 @@ export class GenericOAuth2Router {
                     const oidcProfile = utilsOAuth2.wickedUserInfoToOidcProfile(userInfo) as OidcProfile;
                     authResponse.userId = userId;
                     authResponse.profile = oidcProfile;
+                    authResponse.groups = userInfo.groups;
 
                     return callback(null, authResponse);
                 });
@@ -1353,6 +1387,25 @@ export class GenericOAuth2Router {
         });
     }
 
+    private static extractUserId(authUserId: string): string {
+        if (!authUserId.startsWith('sub='))
+            return authUserId;
+        const semicolonIndex = authUserId.indexOf(';');
+        if (semicolonIndex < 0) {
+            warn(`extractUserId: Expected authenticated_userid of this form: sub=<...>;namespace=<...>, received ${authUserId}`);
+            return authUserId;
+        }
+        return authUserId.substring(4, semicolonIndex);
+    }
+
+    private static cleanupScopeString(scopes: string): string[] {
+        debug(`cleanupScopeString(${scopes})`);
+        if (!scopes)
+            return [];
+        const scopeList = scopes.split(' ');
+        return scopeList.filter(s => !s.startsWith("wicked:"));
+    }
+
     private tokenRefreshToken(tokenRequest: TokenRequest, callback: AccessTokenCallback) {
         debug('tokenRefreshToken()');
         const instance = this;
@@ -1365,27 +1418,69 @@ export class GenericOAuth2Router {
         tokens.getTokenDataByRefreshToken(refreshToken, function (err, tokenInfo) {
             if (err)
                 return failOAuth(400, 'invalid_request', 'could not retrieve information on the given refresh token.', err, callback);
+
             debug('refresh token info:');
             debug(tokenInfo);
-            const userId = tokenInfo.authenticated_userid;
-            if (!userId)
-                return failOAuth(500, 'server_error', 'could not correctly retrieve authenticated user id from refresh token', callback);
-            instance.idp.checkRefreshToken(tokenInfo, (err, refreshCheckResult) => {
-                // TODO: This might be possible to do for all APIs, e.g. check for the previously
-                // created user (in wicked). If not present -> Don't refresh. We can still keep
-                // the callback to the IdP for additional things (I can't imagine what right now though).
+            kongUtils.lookupApiFromKongApiId(tokenInfo.api_id, function (err, apiInfo) {
                 if (err)
-                    return failOAuth(500, 'server_error', 'checking the refresh token returned an unexpected error.', callback);
-                wicked.getUser(userId, function (err, userInfo) {
-                    if (err)
-                        return failOAuth(400, 'invalid_request', 'user associated with refresh token is not a valid user (anymore)', err, callback);
-                    debug('wicked local user info:');
-                    debug(userInfo);
-                    const oidcProfile = utilsOAuth2.wickedUserInfoToOidcProfile(userInfo);
-                    tokenRequest.session_data = oidcProfile;
-                    // Now delegate to oauth2 adapter:
-                    oauth2.token(tokenRequest, callback);
-                });
+                    return failOAuth(500, 'server_error', 'could not lookup API from given refresh token.', err, callback);
+
+                // Check for passthrough scopes and users
+                if (apiInfo.passthroughUsers && !apiInfo.passthroughScopeUrl) {
+                    return failOAuth(500, 'server_error', 'when using the combination of passthrough users and not retrieving the scope from a third party, refresh tokens cannot be used.', callback);
+                } else if (!apiInfo.passthroughUsers && apiInfo.passthroughScopeUrl) {
+                    // wicked manages the users, but scope is calculated by somebody else
+                    return failOAuth(500, 'server_error', 'wicked managed users and passthrough scope URL is not yet implemented (spec unclear).', callback);
+                } else if (!apiInfo.passthroughUsers && !apiInfo.passthroughScopeUrl) {
+                    // Normal case
+                    const userId = GenericOAuth2Router.extractUserId(tokenInfo.authenticated_userid);
+                    if (!userId)
+                        return failOAuth(500, 'server_error', 'could not correctly retrieve authenticated user id from refresh token', callback);
+                    instance.idp.checkRefreshToken(tokenInfo, (err, refreshCheckResult) => {
+                        // TODO: This might be possible to do for all APIs, e.g. check for the previously
+                        // created user (in wicked). If not present -> Don't refresh. We can still keep
+                        // the callback to the IdP for additional things (I can't imagine what right now though).
+                        if (err)
+                            return failOAuth(500, 'server_error', 'checking the refresh token returned an unexpected error.', err, callback);
+                        wicked.getUser(userId, function (err, userInfo) {
+                            if (err)
+                                return failOAuth(400, 'invalid_request', 'user associated with refresh token is not a valid user (anymore)', err, callback);
+                            debug('wicked local user info:');
+                            debug(userInfo);
+                            const oidcProfile = utilsOAuth2.wickedUserInfoToOidcProfile(userInfo);
+                            tokenRequest.session_data = oidcProfile;
+                            // Now delegate to oauth2 adapter:
+                            oauth2.token(tokenRequest, callback);
+                        });
+                    });
+                } else {
+                    // Passthrough users and passthrough scope URL, the other usual case if the user
+                    // is not the resource owner. Ask third party.
+                    const tempProfile: OidcProfile = {
+                        sub: tokenInfo.authenticated_userid
+                    };
+                    const scopes = GenericOAuth2Router.cleanupScopeString(tokenInfo.scope);
+                    instance.resolvePassthroughScope(scopes, tempProfile, apiInfo.passthroughScopeUrl, (err, scopeResponse: PassthroughScopeResponse) => {
+                        if (err)
+                            return failError(500, err, callback);
+                        tokenRequest.session_data = tempProfile;
+                        // We will have to rewrite this to a "password" grant, as we cannot change the scope otherwise
+                        tokenRequest.grant_type = 'password';
+                        tokenRequest.authenticated_userid = scopeResponse.authenticated_userid;
+                        tokenRequest.scope = scopeResponse.authenticated_scope;
+
+                        oauth2.token(tokenRequest, (err, accessToken: AccessToken) => {
+                            if (err)
+                                return callback(err);
+                            // Delete the old token
+                            tokens.deleteTokens(tokenInfo.access_token, null, (err) => {
+                                if (err)
+                                    error(err);
+                            });
+                            return callback(null, accessToken);
+                        });
+                    });
+                }
             });
         });
     }

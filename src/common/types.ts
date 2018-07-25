@@ -45,6 +45,7 @@ export interface AuthRequestCallback {
 export interface AuthResponse {
     userId?: string,
     customId?: string,
+    groups?: string[],
     defaultProfile: OidcProfile,
     defaultGroups: string[],
     registrationPool?: string,
@@ -187,10 +188,18 @@ export interface EmailMissingHandler {
 };
 
 export interface TokenInfo {
+    /** Internal Kong ID of the token */
+    id: string,
     access_token: string,
-    refresh_token: string,
+    refresh_token?: string,
     authenticated_userid?: string,
-    authenticated_scope?: string
+    scope?: string,
+    expires_in: number,
+    /** This is the internal Kong API ID, **not** the wicked API ID */
+    api_id: string,
+    credential_id: string,
+    /** Typically `bearer` */
+    token_type: string
 };
 
 export interface KongTokenInfo {

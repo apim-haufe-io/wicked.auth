@@ -6,6 +6,7 @@ const { debug, info, warn, error } = require('portal-env').Logger('portal-auth:k
 import * as wicked from 'wicked-sdk';
 
 import { utils } from '../common/utils';
+import { Callback, WickedApi } from 'wicked-sdk';
 
 function kongAction(method, url, body, expectedStatusCode, callback) {
     //console.log('$$$$$$ kongAction: ' + method + ' ' + url);
@@ -69,5 +70,16 @@ export const kongUtils = {
 
     kongPatch: function (url, body, callback) {
         kongAction('PATCH', url, body, 200, callback);
+    },
+
+    lookupApiFromKongApiId(kongApiId: string, callback: Callback<WickedApi>): void {
+        debug(`lookupApiFromKongApiId(${kongApiId})`);
+        kongUtils.kongGet(`apis/${kongApiId}`, function (err, kongApiInfo) {
+            if (err)
+                return callback(err);
+            const apiId = kongApiInfo.name;
+
+            utils.getApiInfo(apiId, callback);
+        });
     }
 };

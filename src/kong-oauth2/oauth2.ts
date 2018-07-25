@@ -724,7 +724,7 @@ function validateTokenRequest(oauthInfo: TokenOAuthInfo, callback: TokenOAuthInf
             // MUST NOT present their client_secret.
             if (!oauthInfo.appInfo.confidential) {
                 if (oauthInfo.inputData.client_secret)
-                    return failOAuth(403, 'unauthorized_client', `client_secret is being passed; he application ${appId} is not declared as a confidential application; it must not contain and pass its client_secret using the ${grantType} grant.`, callback);
+                    return failOAuth(403, 'unauthorized_client', `client_secret is being passed; the application ${appId} is not declared as a confidential application; it must not contain and pass its client_secret using the ${grantType} grant.`, callback);
             } else {
                 if (!oauthInfo.inputData.client_secret)
                     return failOAuth(403, 'unauthorized_client', `client_secret is missing; the application ${appId} is declared as a confidential application; it must pass its client_secret using the ${grantType} grant.`, callback);
