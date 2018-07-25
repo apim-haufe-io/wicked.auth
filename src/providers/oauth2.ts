@@ -295,13 +295,15 @@ export class OAuth2IdP implements IdentityProvider {
             warn(`createDefaultGroups(${this.authMethodId}): When creating profile, field ${groupField} is not a string array, defaulting to no groups.`);
             return [];
         }
-        const tmpGroups = {};
+        const defaultGroups = [];
+        const groupMap = this.authMethodConfig.defaultGroups;
         for (let i = 0; i < groups.length; ++i) {
-            tmpGroups[groups[i]] = true;
-        }
-        const defaultGroups: string[] = [];
-        for (let group in tmpGroups) {
-            defaultGroups.push(group);
+            const g = groups[i];
+            if (groupMap[g]) {
+                const wickedGroup = groupMap[g];
+                debug(`Detected matching group ${g}: ${wickedGroup}`);
+                defaultGroups.push(wickedGroup);
+            }
         }
         debug(`createDefaultGroups(${this.authMethodId}): ${defaultGroups}`);
         return defaultGroups;
