@@ -196,7 +196,9 @@ export interface TokenInfo {
     scope?: string,
     expires_in: number,
     /** This is the internal Kong API ID, **not** the wicked API ID */
-    api_id: string,
+    api_id?: string,
+    /** This is the internal Kong Service ID, **not** the wicked API ID */
+    service_id?: string,
     credential_id: string,
     /** Typically `bearer` */
     token_type: string

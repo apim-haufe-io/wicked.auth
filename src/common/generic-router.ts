@@ -1421,7 +1421,8 @@ export class GenericOAuth2Router {
 
             debug('refresh token info:');
             debug(tokenInfo);
-            kongUtils.lookupApiFromKongApiId(tokenInfo.api_id, function (err, apiInfo) {
+            // kongUtils.lookupApiFromKongApiId(tokenInfo.api_id, function (err, apiInfo) {
+            kongUtils.lookupApiFromKongApiId(tokenInfo.service_id, function (err, apiInfo) {
                 if (err)
                     return failOAuth(500, 'server_error', 'could not lookup API from given refresh token.', err, callback);
 

@@ -6,7 +6,8 @@ const { debug, info, warn, error } = require('portal-env').Logger('portal-auth:k
 import * as wicked from 'wicked-sdk';
 
 import { utils } from '../common/utils';
-import { Callback, WickedApi } from 'wicked-sdk';
+
+import { Callback, WickedApi, KongPlugin, KongCollection, KongRoute, KongService } from 'wicked-sdk';
 
 function kongAction(method, url, body, expectedStatusCode, callback) {
     //console.log('$$$$$$ kongAction: ' + method + ' ' + url);
@@ -60,21 +61,38 @@ export const kongUtils = {
         kongAction('GET', url, null, 200, callback);
     },
 
-    kongPost: function (url, body, callback) {
-        kongAction('POST', url, body, 201, callback);
-    },
+    // kongPost: function (url, body, callback) {
+    //     kongAction('POST', url, body, 201, callback);
+    // },
 
     kongDelete: function (url, callback) {
         kongAction('DELETE', url, null, 204, callback);
     },
 
-    kongPatch: function (url, body, callback) {
-        kongAction('PATCH', url, body, 200, callback);
+    // kongPatch: function (url, body, callback) {
+    //     kongAction('PATCH', url, body, 200, callback);
+    // },
+
+    kongGetApi: function (apiId, callback) {
+        kongGetService(apiId, function (err, service) {
+            if (err)
+                return callback(err);
+            kongGetRouteForService(apiId, function (err, route) {
+                if (err)
+                    return callback(err);
+                return callback(null, wicked.kongServiceRouteToApi(service, route));
+            })
+        })
+    },
+
+    kongGetApiOAuth2Plugins: function (apiId, callback: Callback<KongCollection<KongPlugin>>) {
+        kongUtils.kongGet('services/' + apiId + '/plugins?name=oauth2', callback);
     },
 
     lookupApiFromKongApiId(kongApiId: string, callback: Callback<WickedApi>): void {
         debug(`lookupApiFromKongApiId(${kongApiId})`);
-        kongUtils.kongGet(`apis/${kongApiId}`, function (err, kongApiInfo) {
+        // kongUtils.kongGet(`apis/${kongApiId}`, function (err, kongApiInfo) {
+        kongUtils.kongGet(`services/${kongApiId}`, function (err, kongApiInfo) {
             if (err)
                 return callback(err);
             const apiId = kongApiInfo.name;
@@ -83,3 +101,20 @@ export const kongUtils = {
         });
     }
 };
+
+function kongGetService(serviceId, callback: Callback<KongService>): void {
+    kongUtils.kongGet(`services/${serviceId}`, callback);
+}
+
+function kongGetRouteForService(serviceId: string, callback: Callback<KongRoute>): void {
+    kongUtils.kongGet(`services/${serviceId}/routes`, function (err, routes: KongCollection<KongRoute>) {
+        if (err)
+            return callback(err);
+        if (routes.total === 0)
+            return callback(null, null);
+        if (routes.total === 1)
+            return callback(null, routes.data[0]);
+        warn(`kongGetRouteForService(${serviceId}): Multiple routes found, returning the first one.`);
+        return callback(null, routes.data[0]);
+    });
+}

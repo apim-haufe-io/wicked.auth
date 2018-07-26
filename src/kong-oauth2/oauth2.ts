@@ -893,12 +893,12 @@ function getOAuth2Config(oauthInfo: OAuthInfo, callback: OAuthInfoCallback) {
     }
 
     // We haven't seen this API yet, get it from le Kong.
-    kongUtils.kongGet('apis/' + apiId + '/plugins?name=oauth2', function (err, body) {
+    kongUtils.kongGetApiOAuth2Plugins(apiId, function (err, body) {
         if (err)
             return failOAuth(500, 'server_error', 'could not retrieve oauth2 plugins from Kong', err, callback);
         if (body.data.length <= 0)
             return failOAuth(500, 'server_error', `api ${apiId} is not configured for use with oauth2`, callback);
-        const oauth2Plugin = body.data[0];
+        const oauth2Plugin = body.data[0] as any;
         if (!oauth2Plugin.config.provision_key)
             return failOAuth(500, 'server_error', `api ${apiId} does not have a valid provision_key`, callback);
         // Looks good, remember dat thing
@@ -942,7 +942,7 @@ function getKongApi(apiId: string, callback: Callback<KongApi>) {
     debug(`getKongApi(${apiId})`);
     if (_kongApis[apiId])
         return callback(null, _kongApis[apiId]);
-    kongUtils.kongGet('apis/' + apiId, function (err, apiData) {
+    kongUtils.kongGetApi(apiId, function (err, apiData) {
         if (err)
             return callback(err);
         _kongApis[apiId] = apiData;
