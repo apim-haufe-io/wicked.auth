@@ -110,9 +110,9 @@ function kongGetRouteForService(serviceId: string, callback: Callback<KongRoute>
     kongUtils.kongGet(`services/${serviceId}/routes`, function (err, routes: KongCollection<KongRoute>) {
         if (err)
             return callback(err);
-        if (routes.total === 0)
+        if (routes.data.length === 0)
             return callback(null, null);
-        if (routes.total === 1)
+        if (routes.data.length === 1)
             return callback(null, routes.data[0]);
         warn(`kongGetRouteForService(${serviceId}): Multiple routes found, returning the first one.`);
         return callback(null, routes.data[0]);
