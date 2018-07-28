@@ -143,10 +143,10 @@ export class GenericOAuth2Router {
 
                 switch (verificationInfo.type) {
                     case "email":
-                        return res.render('verify_email', viewModel);
+                        return utils.render(req, res, 'verify_email', viewModel);
 
                     case "lostpassword":
-                        return res.render('verify_password_reset', viewModel);
+                        return utils.render(req, res, 'verify_password_reset', viewModel);
 
                     default:
                         return failMessage(500, `Unknown verification type ${verificationInfo.type}`, next);
@@ -195,7 +195,7 @@ export class GenericOAuth2Router {
 
                             // Success
                             const viewModel = utils.createViewModel(req, authMethodId);
-                            return res.render('verify_email_post', viewModel);
+                            return utils.render(req, res, 'verify_email_post', viewModel);
                         });
                         break;
                     case "lostpassword":
@@ -215,7 +215,7 @@ export class GenericOAuth2Router {
 
                             // Success
                             const viewModel = utils.createViewModel(req, authMethodId);
-                            return res.render('verify_password_reset_post', viewModel);
+                            return utils.render(req, res, 'verify_password_reset_post', viewModel);
                         });
                         break;
 
@@ -232,7 +232,7 @@ export class GenericOAuth2Router {
             debug(`forgotPasswordHandler(${authMethodId})`);
 
             const viewModel = utils.createViewModel(req, authMethodId);
-            return res.render('forgot_password', viewModel);
+            return utils.render(req, res, 'forgot_password', viewModel);
         };
     }
 
@@ -285,7 +285,7 @@ export class GenericOAuth2Router {
 
             // No matter what happens, we will send the same page to the user.
             const viewModel = utils.createViewModel(req, authMethodId);
-            res.render('forgot_password_post', viewModel);
+            utils.render(req, res, 'forgot_password_post', viewModel);
         };
     }
 
@@ -310,7 +310,7 @@ export class GenericOAuth2Router {
             const viewModel = utils.createViewModel(req, authMethodId);
             viewModel.profile = utils.getAuthResponse(req, authMethodId).profile;
 
-            return res.render('verify_email_request', viewModel);
+            return utils.render(req, res, 'verify_email_request', viewModel);
         };
     };
 
@@ -336,7 +336,7 @@ export class GenericOAuth2Router {
             utils.createVerificationRequest(trustUsers, authMethodId, email, (err) => {
                 if (err)
                     return failError(500, err, next);
-                return res.render('verify_email_request_confirm', utils.createViewModel(req, authMethodId));
+                return utils.render(req, res, 'verify_email_request_confirm', utils.createViewModel(req, authMethodId));
             });
         };
     }
@@ -354,7 +354,7 @@ export class GenericOAuth2Router {
                     return continueAuthenticate(req, res, next, userInfo.email);
                 // Unknown user, ask for email please            
                 const viewModel = utils.createViewModel(req, authMethodId);
-                return res.render('email_missing', viewModel);
+                return utils.render(req, res, 'email_missing', viewModel);
             });
         };
     }
@@ -793,7 +793,7 @@ export class GenericOAuth2Router {
             const authRequest = utils.getAuthRequest(req, instance.authMethodId);
             authRequest.validNamespaces = namespaceList;
 
-            return res.render('select_namespace', viewModel);
+            return utils.render(req, res, 'select_namespace', viewModel);
         });
     }
 
@@ -855,7 +855,7 @@ export class GenericOAuth2Router {
             viewModel.nonce = nonce;
 
             debug(viewModel);
-            res.render('register', viewModel);
+            utils.render(req, res, 'register', viewModel);
         });
     }
 
@@ -1002,7 +1002,7 @@ export class GenericOAuth2Router {
                         existingGrants: grantsList
                     };
 
-                    return res.render('grant_scopes', viewModel);
+                    return utils.render(req, res, 'grant_scopes', viewModel);
                 });
             });
         });

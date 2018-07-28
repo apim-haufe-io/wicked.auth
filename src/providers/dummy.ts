@@ -5,6 +5,7 @@ import { IdentityProvider, IdpOptions, AuthRequest, EndpointDefinition, CheckRef
 const { debug, info, warn, error } = require('portal-env').Logger('portal-auth:local');
 import * as wicked from 'wicked-sdk';
 import { Callback } from 'wicked-sdk';
+import { utils } from '../common/utils';
 
 export class DummyIdP implements IdentityProvider {
 
@@ -96,7 +97,7 @@ export class DummyIdP implements IdentityProvider {
 
     private renderLogin(req, res, flashError: string): void {
         debug('renderLogin()');
-        res.render('dummy', {
+        utils.render(req, res, 'dummy', {
             title: req.app.glob.title,
             portalUrl: wicked.getExternalPortalUrl(),
             baseUrl: req.app.get('base_path'),

@@ -83,7 +83,7 @@ export class GrantManager {
                 if (flashMessage)
                     viewModel.flashMessage = flashMessage
 
-                res.render('scope_list', viewModel);
+                utils.render(req, res, 'scope_list', viewModel);
             });
         });
     }

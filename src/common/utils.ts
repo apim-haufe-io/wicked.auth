@@ -444,6 +444,17 @@ export const utils = {
         if (s !== encoded)
             throw new Error('Input string is not a valid base64 encoded string');
         return decoded;
+    },
+
+    render(req, res, template: string, viewModel): void {
+        if (process.env.ALLOW_RENDER_JSON) {
+            const accept = req.get('accept');
+            if (accept && accept.toLowerCase() === 'application/json') {
+                warn('Rendering as JSON');
+                return res.json(viewModel);
+            }
+        }
+        res.render(template, viewModel);
     }
 };
 

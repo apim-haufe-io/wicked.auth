@@ -206,7 +206,7 @@ app.initApp = function (authServerConfig: WickedAuthServer, callback: SimpleCall
         req.session.destroy();
         if (req.query && req.query.redirect_uri)
             return res.redirect(req.query.redirect_uri);
-        res.render('logout', {
+        utils.render(req, res, 'logout', {
             title: 'Logged out',
             portalUrl: wicked.getExternalPortalUrl(),
             baseUrl: req.app.get('base_path'),
@@ -221,7 +221,7 @@ app.initApp = function (authServerConfig: WickedAuthServer, callback: SimpleCall
         if (req.session && req.session.redirectUri)
             redirectUri = req.session.redirectUri;
 
-        res.render('failure', {
+        utils.render(req, res, 'failure', {
             title: 'Failure',
             portalUrl: wicked.getExternalPortalUrl(),
             baseUrl: req.app.get('base_path'),
@@ -260,7 +260,7 @@ app.initApp = function (authServerConfig: WickedAuthServer, callback: SimpleCall
                 error_description: err.message
             });
         } else {
-            res.render('error', {
+            utils.render(req, res, 'error', {
                 title: 'Error',
                 portalUrl: wicked.getExternalPortalUrl(),
                 baseUrl: req.app.get('base_path'),
