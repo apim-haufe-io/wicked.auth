@@ -111,7 +111,11 @@ export class LocalIdP implements IdentityProvider {
         this.loginUser(username, password, (err, authResponse) => {
             if (err) {
                 debug(err);
-                return instance.renderLogin(req, res, next, 'Username or password invalid.', username);
+                // Delay redisplay of login page a little
+                setTimeout(function () {
+                    instance.renderLogin(req, res, next, 'Username or password invalid.', username);
+                }, 500);
+                return;
             }
 
             instance.genericFlow.continueAuthorizeFlow(req, res, next, authResponse);
@@ -151,12 +155,12 @@ export class LocalIdP implements IdentityProvider {
             if (err)
                 return failError(500, err, next);
             if (disableSignup)
-                return failMessage(403, 'Signup is not allowed for this API or Authentication Method.', next);
+                return failMessage(401, 'Signup is not allowed for this API or Authentication Method.', next);
 
             // Recaptcha?
             utils.verifyRecaptcha(req, (err) => {
                 if (err)
-                    return failError(403, err, next);
+                    return failError(401, err, next);
                 // Let's give it a shot; wicked can still intervene here...
                 const emailValidated = this.authMethodConfig.trustUsers;
                 const userCreateInfo = {

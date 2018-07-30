@@ -57,9 +57,8 @@ export class UtilsOAuth2 {
             if (err)
                 return failMessage(400, err.message, callback);
             const application = subsValidation.subsInfo.application;
-            // Now we have a redirect_uri; we can now make use of failOAuth
             if (!application.redirectUri)
-                return failOAuth(400, 'invalid_request', 'The application associated with the given client_id does not have a registered redirect_uri.', callback);
+                return failMessage(400, 'The application associated with the given client_id does not have a registered redirect_uri.', callback);
 
             // Verify redirect_uri from application, has to match what is passed in
             const uri1 = utils.normalizeRedirectUri(authRequest.redirect_uri);
@@ -68,9 +67,10 @@ export class UtilsOAuth2 {
             if (uri1 !== uri2) {
                 error(`Expected redirect_uri: ${uri2}`);
                 error(`Received redirect_uri: ${uri1}`);
-                return failOAuth(400, 'invalid_request', 'The provided redirect_uri does not match the registered redirect_uri', callback);
+                return failMessage(400, 'The provided redirect_uri does not match the registered redirect_uri', callback);
             }
 
+            // Now we have a redirect_uri; we can now make use of failOAuth
             // Success
             return callback(null, subsValidation);
         });
@@ -304,7 +304,7 @@ export class UtilsOAuth2 {
 
         const bearerToken = req.get('authorization');
         if (!bearerToken)
-            return failMessage(403, 'Unauthorized', next);
+            return failMessage(401, 'Unauthorized', next);
         let accessToken = null;
         if (bearerToken.indexOf(' ') > 0) {
             // assume Bearer xxx

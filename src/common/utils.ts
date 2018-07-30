@@ -287,7 +287,7 @@ export const utils = {
                     return callback(err);
                 var recaptchaBody = utils.getJson(apiBody);
                 if (!recaptchaBody.success) {
-                    return failMessage(403, 'ReCAPTCHA response invalid - Please try again', callback);
+                    return failMessage(401, 'ReCAPTCHA response invalid - Please try again', callback);
                 }
 
                 callback(null);

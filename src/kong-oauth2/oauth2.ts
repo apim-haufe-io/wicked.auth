@@ -265,7 +265,7 @@ function authorizeImplicitKong(oauthInfo: AuthorizeOAuthInfo, callback: Authoriz
     // Check that the API is configured for implicit grant
     if (!oauthInfo.oauth2Config ||
         !oauthInfo.oauth2Config.enable_implicit_grant) {
-        return failOAuth(403, 'unauthorized_client', 'The API ' + oauthInfo.inputData.api_id + ' is not configured for the OAuth2 implicit grant', callback);
+        return failOAuth(401, 'unauthorized_client', 'The API ' + oauthInfo.inputData.api_id + ' is not configured for the OAuth2 implicit grant', callback);
     }
 
     return authorizeWithKong(oauthInfo, 'token', callback);
@@ -325,7 +325,7 @@ function authorizeAuthorizationCodeKong(oauthInfo: AuthorizeOAuthInfo, callback:
     // Check that the API is configured for authorization code grant
     if (!oauthInfo.oauth2Config ||
         !oauthInfo.oauth2Config.enable_authorization_code)
-        return failOAuth(403, 'unauthorized_client', 'The API ' + oauthInfo.inputData.api_id + ' is not configured for the OAuth2 Authorization Code grant.', callback);
+        return failOAuth(401, 'unauthorized_client', 'The API ' + oauthInfo.inputData.api_id + ' is not configured for the OAuth2 Authorization Code grant.', callback);
 
     return authorizeWithKong(oauthInfo, 'code', callback);
 }
@@ -380,7 +380,7 @@ function tokenAuthorizationCodeKong(oauthInfo: TokenOAuthInfo, callback: TokenOA
     debug(oauthInfo.oauth2Config);
     if (!oauthInfo.oauth2Config ||
         !oauthInfo.oauth2Config.enable_authorization_code)
-        return failOAuth(403, 'unauthorized_client', 'The API ' + oauthInfo.inputData.api_id + ' is not configured for the OAuth2 authorization code grant.', callback);
+        return failOAuth(401, 'unauthorized_client', 'The API ' + oauthInfo.inputData.api_id + ' is not configured for the OAuth2 authorization code grant.', callback);
 
     return tokenWithKong(oauthInfo, 'authorization_code', callback);
 }
@@ -441,7 +441,7 @@ function tokenClientCredentialsKong(oauthInfo: TokenOAuthInfo, callback: TokenOA
     debug(oauthInfo.oauth2Config);
     if (!oauthInfo.oauth2Config ||
         !oauthInfo.oauth2Config.enable_client_credentials)
-        return failOAuth(403, 'unauthorized_client', 'The API ' + oauthInfo.inputData.api_id + ' is not configured for the OAuth2 client credentials grant.', callback);
+        return failOAuth(401, 'unauthorized_client', 'The API ' + oauthInfo.inputData.api_id + ' is not configured for the OAuth2 client credentials grant.', callback);
 
     return tokenWithKong(oauthInfo, 'client_credentials', callback);
 }
@@ -491,7 +491,7 @@ function tokenPasswordGrantKong(oauthInfo: TokenOAuthInfo, callback: TokenOAuthI
     debug(oauthInfo.oauth2Config);
     if (!oauthInfo.oauth2Config ||
         !oauthInfo.oauth2Config.enable_password_grant)
-        return failOAuth(403, 'unauthorized_client', 'The API ' + oauthInfo.inputData.api_id + ' is not configured for the OAuth2 resource owner password grant.', callback);
+        return failOAuth(401, 'unauthorized_client', 'The API ' + oauthInfo.inputData.api_id + ' is not configured for the OAuth2 resource owner password grant.', callback);
 
     return tokenWithKong(oauthInfo, 'password', callback);
 }
@@ -724,10 +724,10 @@ function validateTokenRequest(oauthInfo: TokenOAuthInfo, callback: TokenOAuthInf
             // MUST NOT present their client_secret.
             if (!oauthInfo.appInfo.confidential) {
                 if (oauthInfo.inputData.client_secret)
-                    return failOAuth(403, 'unauthorized_client', `client_secret is being passed; the application ${appId} is not declared as a confidential application; it must not contain and pass its client_secret using the ${grantType} grant.`, callback);
+                    return failOAuth(401, 'unauthorized_client', `client_secret is being passed; the application ${appId} is not declared as a confidential application; it must not contain and pass its client_secret using the ${grantType} grant.`, callback);
             } else {
                 if (!oauthInfo.inputData.client_secret)
-                    return failOAuth(403, 'unauthorized_client', `client_secret is missing; the application ${appId} is declared as a confidential application; it must pass its client_secret using the ${grantType} grant.`, callback);
+                    return failOAuth(401, 'unauthorized_client', `client_secret is missing; the application ${appId} is declared as a confidential application; it must pass its client_secret using the ${grantType} grant.`, callback);
             }
 
             break;
@@ -736,7 +736,7 @@ function validateTokenRequest(oauthInfo: TokenOAuthInfo, callback: TokenOAuthInf
         case 'client_credentials':
         case 'authorization_code':
             if (!oauthInfo.appInfo.confidential)
-                return failOAuth(403, 'unauthorized_client', `the application ${appId} is not declared as a confidential application, thus cannot request access tokens via grant ${grantType}.`, callback);
+                return failOAuth(401, 'unauthorized_client', `the application ${appId} is not declared as a confidential application, thus cannot request access tokens via grant ${grantType}.`, callback);
             if (!oauthInfo.inputData.client_secret)
                 return failOAuth(400, 'unauthorized_client', 'client_secret is missing.', callback);
             break;
@@ -860,7 +860,7 @@ function lookupSubscription(oauthInfo: OAuthInfo, callback: OAuthInfoCallback) {
     debug('lookupSubscription()');
     wicked.getSubscriptionByClientId(oauthInfo.inputData.client_id, oauthInfo.inputData.api_id, function (err, subscription) {
         if (err)
-            return failOAuth(403, 'unauthorized_client', 'invalid client_id', err, callback);
+            return failOAuth(401, 'unauthorized_client', 'invalid client_id', err, callback);
 
         const subsInfo = subscription.subscription;
         debug('subsInfo:');
@@ -874,7 +874,7 @@ function lookupSubscription(oauthInfo: OAuthInfo, callback: OAuthInfoCallback) {
             debug(oauthInfo.inputData);
             debug('subInfo:');
             debug(subsInfo);
-            return failOAuth(403, 'unauthorized_client', 'subscription does not match client_id, or invalid api_id', callback);
+            return failOAuth(401, 'unauthorized_client', 'subscription does not match client_id, or invalid api_id', callback);
         }
         oauthInfo.subsInfo = subsInfo;
         oauthInfo.appInfo = appInfo;

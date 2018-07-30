@@ -102,7 +102,8 @@ export class GenericOAuth2Router {
                 if (req.isTokenFlow) {
                     // Return a plain error message in JSON
                     error(err);
-                    return res.json({ error: err.oauthError, error_description: err.message });
+                    const status = err.status || 500;
+                    return res.status(status).json({ error: err.oauthError, error_description: err.message });
                 }
 
                 // Check for authorization calls
@@ -1171,11 +1172,18 @@ export class GenericOAuth2Router {
             if (err)
                 return callback(err);
             const trustedSubscription = validationResult.trusted;
+            if (validationResult.subsInfo.application.confidential) {
+                // Also check client_secret here
+                if (!tokenRequest.client_secret)
+                    return failOAuth(401, 'invalid_request', 'A confidential application must also pass its client_secret', callback);
+                if (validationResult.subsInfo.subscription.clientSecret !== tokenRequest.client_secret)
+                    return failOAuth(401, 'invalid_request', 'Invalid client secret', callback);
+            }
 
             // Now we know whether we have a trusted subscription or not; only allow trusted subscriptions to
             // retrieve a token via the password grant.
             if (!trustedSubscription)
-                return failOAuth(400, 'invalid_request', 'only trusted application subscriptions can retrieve tokens via the password grants.', callback);
+                return failOAuth(400, 'invalid_request', 'only trusted application subscriptions can retrieve tokens via the password grant.', callback);
             utilsOAuth2.validateApiScopes(tokenRequest.api_id, tokenRequest.scope, trustedSubscription, function (err, validatedScopes) {
                 if (err)
                     return failOAuth(500, 'server_error', 'could not validate requested token scope', err, callback);
