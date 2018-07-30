@@ -1124,7 +1124,7 @@ export class GenericOAuth2Router {
                 returnScope = [];
             else
                 returnScope = scope;
-            for (let i=0; i< groups.length; ++i)
+            for (let i = 0; i < groups.length; ++i)
                 returnScope.push(`wicked:${groups[i]}`);
         }
         return returnScope;

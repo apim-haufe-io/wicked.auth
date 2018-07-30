@@ -55,7 +55,7 @@ export class UtilsOAuth2 {
             return failMessage(400, 'Invalid or empty redirect_uri', callback);
         this.validateSubscription(authRequest, function (err, subsValidation: SubscriptionValidation) {
             if (err)
-                return callback(err);
+                return failMessage(400, err.message, callback);
             const application = subsValidation.subsInfo.application;
             // Now we have a redirect_uri; we can now make use of failOAuth
             if (!application.redirectUri)

@@ -13,7 +13,7 @@ const qs = require('querystring');
 
 import { failMessage, failError, failOAuth, makeError } from './utils-fail';
 import { NameSpec, StringCallback, SimpleCallback, AuthRequest, AuthResponse, AuthSession } from './types';
-import { OidcProfile, WickedApi, WickedPool, Callback, WickedUserShortInfo } from 'wicked-sdk';
+import { OidcProfile, WickedApi, WickedPool, Callback, WickedUserShortInfo, WickedError } from 'wicked-sdk';
 
 const ERROR_TIMEOUT = 500; // ms
 
@@ -350,22 +350,32 @@ export const utils = {
     },
 
     getSession(req, authMethodId): AuthSession {
+        if (!req.session || !req.session[authMethodId])
+            throw new WickedError('Invalid session state, not using a browser?', 400);
         return req.session[authMethodId];
     },
 
     getAuthRequest: function (req, authMethodId: string): AuthRequest {
+        if (!req.session || !req.session[authMethodId])
+            throw new WickedError('Invalid session state, not using a browser?', 400);
         return req.session[authMethodId].authRequest;
     },
 
     setAuthRequest: function (req, authMethodId: string, authRequest: AuthRequest): void {
+        if (!req.session || !req.session[authMethodId])
+            throw new WickedError('Invalid session state, not using a browser?', 400);
         req.session[authMethodId].authRequest = authRequest;
     },
 
     getAuthResponse: function (req, authMethodId: string): AuthResponse {
+        if (!req.session || !req.session[authMethodId])
+            throw new WickedError('Invalid session state, not using a browser?', 400);
         return req.session[authMethodId].authResponse;
     },
 
     setAuthResponse: function (req, authMethodId: string, authResponse: AuthResponse): void {
+        if (!req.session || !req.session[authMethodId])
+            throw new WickedError('Invalid session state, not using a browser?', 400);
         req.session[authMethodId].authResponse = authResponse;
     },
 
@@ -431,7 +441,7 @@ export const utils = {
      * Makes sure a user is logged in, and then redirects back to the original URL as per
      * the given req object.
      */
-    loginAndRedirectBack: function(req, res, authMethodId: string): void {
+    loginAndRedirectBack: function (req, res, authMethodId: string): void {
         const thisUri = req.originalUrl;
         const redirectUri = `${req.app.get('base_path')}/${authMethodId}/login?redirect_uri=${qs.escape(thisUri)}`;
         return res.redirect(redirectUri);
@@ -450,7 +460,8 @@ export const utils = {
         if (process.env.ALLOW_RENDER_JSON) {
             const accept = req.get('accept');
             if (accept && accept.toLowerCase() === 'application/json') {
-                warn('Rendering as JSON');
+                viewModel.would_be_html = true;
+                viewModel.template = template;
                 return res.json(viewModel);
             }
         }
