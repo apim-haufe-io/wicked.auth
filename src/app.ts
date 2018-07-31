@@ -70,7 +70,11 @@ app.initApp = function (authServerConfig: WickedAuthServer, callback: SimpleCall
     const basePath = app.get('base_path');
 
     app._startupSeconds = utils.getUtc();
-    app.get('/ping', function (req, res, next) {
+
+    app.get('/ping', answerPing);
+    app.get(basePath + '/ping', answerPing);
+    
+    function answerPing(req, res, next) {
         debug('/ping');
         const health = {
             name: 'auth',
@@ -95,7 +99,7 @@ app.initApp = function (authServerConfig: WickedAuthServer, callback: SimpleCall
             res.status(500);
         }
         res.json(health);
-    });
+    }
 
     app.use(basePath + '/bootstrap', express.static(path.join(__dirname, 'assets/bootstrap/dist')));
     app.use(basePath + '/jquery', express.static(path.join(__dirname, 'assets/jquery/dist')));
