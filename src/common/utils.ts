@@ -456,7 +456,7 @@ export const utils = {
         return decoded;
     },
 
-    render(req, res, template: string, viewModel): void {
+    render(req, res, template: string, viewModel, authRequest?: AuthRequest): void {
         if (process.env.ALLOW_RENDER_JSON) {
             const accept = req.get('accept');
             if (accept && accept.toLowerCase() === 'application/json') {
@@ -464,6 +464,14 @@ export const utils = {
                 viewModel.template = template;
                 return res.json(viewModel);
             }
+        }
+
+        viewModel.app_name = viewModel.title;
+        if (authRequest) {
+            if (authRequest.app_name && authRequest.app_id && authRequest.app_id !== '__portal')
+                viewModel.app_name = authRequest.app_name;
+            if (authRequest.app_url)
+                viewModel.portalUrl = authRequest.app_url;
         }
         viewModel.i18n = getI18n(template);
         res.render(template, viewModel);

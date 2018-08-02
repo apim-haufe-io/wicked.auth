@@ -12,6 +12,8 @@ export interface OAuth2Request {
     authenticated_userid?: string,
     scope?: any,
     app_id?: string,
+    app_name?: string,
+    app_url?: string,
     // Hmm
     session_data?: any
 }

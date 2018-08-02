@@ -232,7 +232,7 @@ export class LocalIdP implements IdentityProvider {
             viewModel.disableSignup = disableSignup;
             if (prefillUsername)
                 viewModel.prefillUsername = prefillUsername;
-            utils.render(req, res, 'login', viewModel);
+            utils.render(req, res, 'login', viewModel, authRequest);
         });
     }
 
@@ -251,8 +251,8 @@ export class LocalIdP implements IdentityProvider {
 
             const viewModel = utils.createViewModel(req, this.authMethodId);
             viewModel.errorMessage = flashMessage;
-            utils.render(req, res, 'signup', viewModel);
-        })
+            utils.render(req, res, 'signup', viewModel, authRequest);
+        });
     }
 
     private loginUser(username: string, password: string, callback: Callback<AuthResponse>) {

@@ -92,6 +92,7 @@ export class UtilsOAuth2 {
                 return failOAuth(500, 'server_error', 'Subscription information does not contain a valid application id', callback);
 
             oauthRequest.app_id = subsInfo.application.id;
+            oauthRequest.app_name = subsInfo.application.name;
             const returnValues: SubscriptionValidation = {
                 subsInfo: subsInfo,
                 trusted: trusted,

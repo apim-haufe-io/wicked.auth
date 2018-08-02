@@ -794,7 +794,7 @@ export class GenericOAuth2Router {
             const authRequest = utils.getAuthRequest(req, instance.authMethodId);
             authRequest.validNamespaces = namespaceList;
 
-            return utils.render(req, res, 'select_namespace', viewModel);
+            return utils.render(req, res, 'select_namespace', viewModel, authRequest);
         });
     }
 
@@ -837,6 +837,7 @@ export class GenericOAuth2Router {
         debug('renderRegister()');
 
         const authResponse = utils.getAuthResponse(req, this.authMethodId);
+        const authRequest = utils.getAuthRequest(req, this.authMethodId);
         const apiId = utils.getAuthRequest(req, this.authMethodId).api_id;
         debug(`API: ${apiId}`);
 
@@ -856,7 +857,7 @@ export class GenericOAuth2Router {
             viewModel.nonce = nonce;
 
             debug(viewModel);
-            utils.render(req, res, 'register', viewModel);
+            utils.render(req, res, 'register', viewModel, authRequest);
         });
     }
 
@@ -1003,7 +1004,7 @@ export class GenericOAuth2Router {
                         existingGrants: grantsList
                     };
 
-                    return utils.render(req, res, 'grant_scopes', viewModel);
+                    return utils.render(req, res, 'grant_scopes', viewModel, authRequest);
                 });
             });
         });
