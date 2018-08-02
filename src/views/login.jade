@@ -10,17 +10,17 @@ block scripts
             var usernameError = '';
             var passwordError = '';
             if (!username)
-                usernameError = 'Please enter a value for the username. ';
+                usernameError = '#{i18n.enter_email}';
             //- else if (!/.+@.+/.test(email))
             //-     emailError = 'Email address invalid. ';
             if (!password)
-                passwordError = 'Please enter your password.';
+                passwordError = '#{i18n.enter_password}';
 
             try {
                 $('#errorUsername').text(usernameError);
                 $('#errorPassword').text(passwordError);
             } catch (err) {
-                alert('Validation errored! Check your input values.');
+                alert('#{i18n.validation_error}');
                 return false;
             }
             
@@ -31,12 +31,12 @@ block scripts
         }
 
 block content
-    h2 Log in
+    h2 #{i18n.log_in}
     
-    p Welcome to the #{title}.
+    p #{i18n.welcome_to} #{title}.
 
     if displayRedirectMessage
-        h4 You will be redirected to the desired page right after successfully logging in.
+        h4 #{i18n.redirect_message}
 
     if errorMessage
         +flashMessage('error', errorMessage)
@@ -48,20 +48,20 @@ block content
         -var predefUsername = prefillUsername ? prefillUsername : '';
 
         .form-group
-            label(for='username') Username:
+            label(for='username') #{i18n.username}:
             input(type='string' name='username' id='username' value='#{predefUsername}').form-control
             small 
                 span(id='errorUsername' style='color:red')
         .form-group
-            label(for='password') Password:
+            label(for='password') #{i18n.password}:
             input(type='password' name='password' id='password').form-control
             small
                 span(id='errorPassword' style='color:red')
-        button(class='btn btn-lg btn-primary btn-block' type='submit') Login
+        button(class='btn btn-lg btn-primary btn-block' type='submit') #{i18n.login}
     
     h5
-        a(href='#{baseUrl}/#{forgotPasswordUrl}') Forgot password?
+        a(href='#{baseUrl}/#{forgotPasswordUrl}') #{i18n.forgot_password}
         
     if !disableSignup
         h5
-            a(href='#{baseUrl}/#{signupUrl}') Create a new user.
+            a(href='#{baseUrl}/#{signupUrl}') #{i18n.create_new_user}

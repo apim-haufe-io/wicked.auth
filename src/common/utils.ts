@@ -465,9 +465,29 @@ export const utils = {
                 return res.json(viewModel);
             }
         }
+        viewModel.i18n = getI18n(template);
         res.render(template, viewModel);
     }
 };
+
+const _i18nMap = new Map<string, object>();
+function getI18n(template: string): object {
+    debug(`getI18n(${template})`);
+    if (_i18nMap.has(template))
+        return _i18nMap.get(template);
+    const language = process.env.LANGUAGE ? process.env.LANGUAGE : 'en';
+    let i18nFile = path.join(__dirname, '..', 'views', `${template}.${language}.json`);
+    if (!fs.existsSync(i18nFile))
+        i18nFile = path.join(__dirname, '..', 'views', `${template}.en.json`);
+    if (!fs.existsSync(i18nFile)) {
+        debug(`getI18n(): No translation file found for template ${template}.`);
+        _i18nMap.set(template, {});
+        return {}
+    }
+    const i18n = JSON.parse(fs.readFileSync(i18nFile, 'utf8'));
+    _i18nMap.set(template, i18n);
+    return i18n;
+}
 
 // ==============================
 // HELPER METHODS

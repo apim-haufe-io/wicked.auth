@@ -1,9 +1,9 @@
 extends auth_layout
 
 block content
-    h2 Select Registration
+    h2 #{i18n.select_namespace}
     
-    p Your account has multiple registrations. Please select which one you want to use.
+    p #{i18n.description}
 
     each namespace, i in namespaces
         form(role='form' action='#{baseUrl}/#{selectNamespaceUrl}' method='post')
@@ -15,4 +15,4 @@ block content
         br
     
     h5
-        a(href='#{baseUrl}/#{logoutUrl}') Log out
+        a(href='#{baseUrl}/#{logoutUrl}') #{i18n.logout}
