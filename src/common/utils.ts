@@ -473,27 +473,32 @@ export const utils = {
             if (authRequest.app_url)
                 viewModel.portalUrl = authRequest.app_url;
         }
-        viewModel.i18n = getI18n(template);
+        viewModel.i18n = getI18n(req, template);
         res.render(template, viewModel);
     }
 };
 
 const _i18nMap = new Map<string, object>();
-function getI18n(template: string): object {
+function getI18n(req, template: string): object {
     debug(`getI18n(${template})`);
-    if (_i18nMap.has(template))
-        return _i18nMap.get(template);
-    const language = process.env.LANGUAGE ? process.env.LANGUAGE : 'en';
-    let i18nFile = path.join(__dirname, '..', 'views', `${template}.${language}.json`);
+
+    let desiredLanguage = req.acceptsLanguages('en', 'de');
+    if (!desiredLanguage)
+        desiredLanguage = 'en';
+    const key = `${template}:${desiredLanguage}`;
+
+    if (_i18nMap.has(key))
+        return _i18nMap.get(key);
+    let i18nFile = path.join(__dirname, '..', 'views', `${template}.${desiredLanguage}.json`);
     if (!fs.existsSync(i18nFile))
         i18nFile = path.join(__dirname, '..', 'views', `${template}.en.json`);
     if (!fs.existsSync(i18nFile)) {
         debug(`getI18n(): No translation file found for template ${template}.`);
-        _i18nMap.set(template, {});
+        _i18nMap.set(key, {});
         return {}
     }
     const i18n = JSON.parse(fs.readFileSync(i18nFile, 'utf8'));
-    _i18nMap.set(template, i18n);
+    _i18nMap.set(key, i18n);
     return i18n;
 }
 
