@@ -703,6 +703,7 @@ export class GenericOAuth2Router {
         const userId = authResponse.userId;
 
         const authRequest = utils.getAuthRequest(req, this.authMethodId);
+        // This is not necessarily filled yet, but might be in a second run of this flow:
         const namespace = authRequest.namespace;
         const instance = this;
         utils.getPoolInfoByApi(authRequest.api_id, function (err, poolInfo) {
@@ -1132,6 +1133,14 @@ export class GenericOAuth2Router {
         return returnScope;
     }
 
+    private makeAuthenticatedUserId(authRequest: AuthRequest, authResponse: AuthResponse) {
+        debug(`makeAuthenticatedUserId()`);
+        let authenticatedUserId = `sub=${authResponse.profile.sub}`;
+        if (authRequest.namespace)
+            authenticatedUserId += `;namespace=${authRequest.namespace}`;
+        return authenticatedUserId;
+    }
+
     private authorizeFlow_Step2(req, res, next): void {
         debug(`authorizeFlow_Step2(${this.authMethodId})`);
         const authRequest = utils.getAuthRequest(req, this.authMethodId);
@@ -1141,7 +1150,7 @@ export class GenericOAuth2Router {
         debug(userProfile);
         oauth2.authorize({
             response_type: authRequest.response_type,
-            authenticated_userid: userProfile.sub,
+            authenticated_userid: this.makeAuthenticatedUserId(authRequest, authResponse),
             api_id: authRequest.api_id,
             client_id: authRequest.client_id,
             scope: GenericOAuth2Router.mergeUserGroupScope(authRequest.scope, authResponse.groups),
@@ -1234,7 +1243,7 @@ export class GenericOAuth2Router {
                             // Does this API have a registration pool at all?
                             if (!apiInfo.registrationPool) {
                                 // No, this is fine. Now check if we can issue a token.
-                                tokenRequest.authenticated_userid = authResponse.userId;
+                                tokenRequest.authenticated_userid = `sub=${authResponse.userId}`;
                                 tokenRequest.session_data = authResponse.profile;
                                 return oauth2.token(tokenRequest, callback);
                             } else {
@@ -1257,7 +1266,7 @@ export class GenericOAuth2Router {
                                             }
                                             // OK, we're fine.
                                             debug('tokenPasswordGrant: Success so far, issuing token.');
-                                            tokenRequest.authenticated_userid = authResponse.userId;
+                                            tokenRequest.authenticated_userid = `sub=${authResponse.userId}`;
                                             tokenRequest.session_data = authResponse.profile;
                                             return oauth2.token(tokenRequest, callback);
                                         } else {

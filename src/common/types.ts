@@ -10,6 +10,8 @@ export interface OAuth2Request {
     client_secret?: string,
     // Not needed for client_credentials
     authenticated_userid?: string,
+    namespace?: string,
+    
     scope?: any,
     app_id?: string,
     app_name?: string,
@@ -34,7 +36,6 @@ export interface AuthRequest extends OAuth2Request {
     trusted?: boolean,
     scopesDiffer?: boolean,
     plain?: boolean,
-    namespace?: string,
     validNamespaces?: string[],
     // Used in the SAML case
     requestId?: string
