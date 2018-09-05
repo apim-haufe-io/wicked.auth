@@ -1169,6 +1169,8 @@ export class GenericOAuth2Router {
                     return failError(500, err, next);
                 if (authRequest.state)
                     uri += '&state=' + qs.escape(authRequest.state);
+                if (authRequest.namespace)
+                    uri += '&namespace=' + qs.escape(authRequest.namespace);
                 return res.redirect(uri);
             });
         });
