@@ -21,6 +21,8 @@ import { OidcProfile, WickedApiScopes, WickedGrant, WickedUserInfo, WickedUserCr
 import { GrantManager } from './grant-manager';
 
 const ERROR_TIMEOUT = 500; // ms
+const EXTERNAL_URL_INTERVAL = 500;
+const EXTERNAL_URL_RETRIES = 10;
 
 export class GenericOAuth2Router {
 
@@ -891,7 +893,7 @@ export class GenericOAuth2Router {
                 if (err)
                     return failError(500, err, next);
                 if (!scopeResponse.allow) {
-                    let msg = 'Scope validation with external system disallowed login';
+                    let msg = 'Scope validation with external system disallowed login (property "allow" is not present or not set to true)';
                     if (scopeResponse.error_message)
                         msg += `: ${scopeResponse.error_message}`;
                     return failMessage(403, msg, next);
@@ -916,18 +918,28 @@ export class GenericOAuth2Router {
             scope: scope,
             profile: profile
         }
-        request.post({
-            url: url,
-            body: scopeRequest,
-            json: true,
-            timeout: 5000
-        }, (err, res, body) => {
+        async.retry({
+            times: EXTERNAL_URL_RETRIES,
+            interval: EXTERNAL_URL_INTERVAL
+        }, function (callback) {
+            debug(`resolvePassthroughScope: Attempting to get scope at ${url}`);
+            request.post({
+                url: url,
+                body: scopeRequest,
+                json: true,
+                timeout: 5000
+            }, (err, res, body) => {
+                if (err)
+                    return callback(err);
+                if (res.statusCode < 200 || res.statusCode > 299)
+                    return callback(makeError('Scope resolving via external service failed with unexpected status code.', res.statusCode));
+                const scopeResponse = utils.getJson(body) as PassthroughScopeResponse;
+                return callback(null, scopeResponse)
+            });
+        }, function (err, scopeResponse) {
             if (err)
                 return callback(err);
-            if (res.statusCode < 200 || res.statusCode > 299)
-                return callback(makeError('Scope resolving via external service failed with unexpected status code.', res.statusCode));
-            const scopeResponse = utils.getJson(body) as PassthroughScopeResponse;
-            return callback(null, scopeResponse)
+            return callback(null, scopeResponse);
         });
     }
 
