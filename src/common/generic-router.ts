@@ -1422,10 +1422,11 @@ export class GenericOAuth2Router {
     private static extractUserId(authUserId: string): string {
         if (!authUserId.startsWith('sub='))
             return authUserId;
+        // Does it look like this: "sub=<user id>;namespace=<whatever>"
         const semicolonIndex = authUserId.indexOf(';');
         if (semicolonIndex < 0) {
-            warn(`extractUserId: Expected authenticated_userid of this form: sub=<...>;namespace=<...>, received ${authUserId}`);
-            return authUserId;
+            // We have only sub=<userid>, no namespace
+            return authUserId.substring(4);
         }
         return authUserId.substring(4, semicolonIndex);
     }
