@@ -1,13 +1,13 @@
 'use strict';
 
 import * as request from 'request';
-import { StatusError } from '../common/utils-fail';
+import { StatusError, makeError } from '../common/utils-fail';
 const { debug, info, warn, error } = require('portal-env').Logger('portal-auth:kong-utils');
 import * as wicked from 'wicked-sdk';
 
 import { utils } from '../common/utils';
 
-import { Callback, WickedApi, KongPlugin, KongCollection, KongRoute, KongService } from 'wicked-sdk';
+import { Callback, WickedApi, KongPlugin, KongCollection, KongRoute, KongService, KongPluginOAuth2, KongConsumer } from 'wicked-sdk';
 
 function kongAction(method, url, body, expectedStatusCode, callback) {
     //console.log('$$$$$$ kongAction: ' + method + ' ' + url);
@@ -81,23 +81,40 @@ export const kongUtils = {
                 if (err)
                     return callback(err);
                 return callback(null, wicked.kongServiceRouteToApi(service, route));
-            })
-        })
+            });
+        });
     },
 
     kongGetApiOAuth2Plugins: function (apiId, callback: Callback<KongCollection<KongPlugin>>) {
         kongUtils.kongGet('services/' + apiId + '/plugins?name=oauth2', callback);
     },
 
-    lookupApiFromKongApiId(kongApiId: string, callback: Callback<WickedApi>): void {
-        debug(`lookupApiFromKongApiId(${kongApiId})`);
-        // kongUtils.kongGet(`apis/${kongApiId}`, function (err, kongApiInfo) {
-        kongUtils.kongGet(`services/${kongApiId}`, function (err, kongApiInfo) {
+    lookupApiFromKongCredential(kongCredentialId: string, callback: Callback<WickedApi>): void {
+        debug(`lookupApiFromKongCredential(${kongCredentialId})`);
+        kongUtils.kongGet(`oauth2?id=${kongCredentialId}`, function (err, kongCredentials: KongCollection<KongPluginOAuth2>) {
             if (err)
                 return callback(err);
-            const apiId = kongApiInfo.name;
-
-            utils.getApiInfo(apiId, callback);
+            if (kongCredentials.data.length !== 1)
+                return callback(makeError('Could not retrieve credential object for credential ID from Kong.', 500));
+            const kongCredential = kongCredentials.data[0];
+            const consumerId = kongCredential.consumer_id;
+            if (!consumerId)
+                return callback(makeError('Could not retrieve consumer by credential from Kong.', 500));
+            kongUtils.kongGet(`consumers/${consumerId}`, function (err, kongConsumer: KongConsumer) {
+                if (err)
+                    return callback(err);
+                if (!kongConsumer)
+                    return callback(makeError(`Could not retrieve consumer with ID ${consumerId}`, 500));
+                const consumerName = kongConsumer.username;
+                if (!consumerName)
+                    return callback(makeError(`Kong consumer with ID ${consumerId} does not have a valid username property`, 500));
+                const dollarPos = consumerName.indexOf('$');
+                if (dollarPos < 0)
+                    return callback(makeError(`Kong consumer with ID ${consumerId} has an invalid username property "${consumerName}".`, 500))
+                // "<application id>$<api id>"
+                const apiId = consumerName.substring(dollarPos + 1);
+                return utils.getApiInfo(apiId, callback);
+            });
         });
     }
 };
