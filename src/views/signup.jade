@@ -79,7 +79,8 @@ block content
             br
         button(class='btn btn-lg btn-primary btn-block' type='submit') Sign up
     
-    h5
-        a(href='#{baseUrl}/#{loginUrl}') Log in with an existing user
+    if authorizeUrl
+        h5
+            a(href='#{baseUrl}/#{authorizeUrl}') Log in with an existing user
     h5
         a(href='#{baseUrl}/#{forgotPasswordUrl}') Forgot password?

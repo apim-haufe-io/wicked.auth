@@ -6,6 +6,7 @@ import { OidcProfile, WickedUserInfo, Callback } from 'wicked-sdk';
 const { debug, info, warn, error } = require('portal-env').Logger('portal-auth:local');
 import * as wicked from 'wicked-sdk';
 const Router = require('express').Router;
+const qs = require('querystring');
 
 import { utils } from '../common/utils';
 import { failMessage, failError, failOAuth, makeError } from '../common/utils-fail';
@@ -20,6 +21,7 @@ export class LocalIdP implements IdentityProvider {
 
     constructor(basePath: string, authMethodId: string, authMethodConfig: LocalIdpConfig, options: IdpOptions) {
         debug(`constructor(${basePath}, ${authMethodId}, ...)`);
+        this.basePath = basePath;
         this.genericFlow = new GenericOAuth2Router(basePath, authMethodId);
         this.authMethodId = authMethodId;
         this.authMethodConfig = authMethodConfig;
@@ -236,6 +238,43 @@ export class LocalIdP implements IdentityProvider {
         });
     }
 
+    private makeAuthorizeUrl(req): string {
+        debug(`makeAuthorizeUrl()`);
+
+        let authRequest: AuthRequest;
+        try {
+            authRequest = utils.getAuthRequest(req, this.authMethodId);
+        } catch (ex) {
+            warn(`makeAuthorizeUrl: Could not get AuthRequest from request session`);
+            return null;
+        }
+        if (!authRequest.api_id) {
+            warn(`makeAuthorizeUrl: Auth Request does not contain an api_id`);
+            return null;
+        }
+        if (!authRequest.client_id) {
+            warn(`makeAuthorizeUrl: Auth Request does not contain a client_id`);
+            return null;
+        }
+        if (!authRequest.response_type) {
+            warn(`makeAuthorizeUrl: Auth Request does not contain a response_type`);
+            return null;
+        }
+        if (!authRequest.redirect_uri) {
+            warn(`makeAuthorizeUrl: Auth Request does not contain a redirect_uri`);
+            return null;
+        }
+        let authorizeUrl = `${this.authMethodId}/api/${authRequest.api_id}/authorize?` + 
+            `client_id=${qs.escape(authRequest.client_id)}` +
+            `&response_type=${authRequest.response_type}` +
+            `&redirect_uri=${qs.escape(authRequest.redirect_uri)}`;
+        if (authRequest.state)
+            authorizeUrl += `&state=${qs.escape(authRequest.state)}`;
+        if (authRequest.namespace)
+            authorizeUrl += `&namespace=${qs.escape(authRequest.namespace)}`;
+        return authorizeUrl;
+    }
+
     private renderSignup(req, res, next, flashMessage: string) {
         debug('renderSignup()');
 
@@ -251,6 +290,7 @@ export class LocalIdP implements IdentityProvider {
 
             const viewModel = utils.createViewModel(req, this.authMethodId);
             viewModel.errorMessage = flashMessage;
+            viewModel.authorizeUrl = instance.makeAuthorizeUrl(req);
             utils.render(req, res, 'signup', viewModel, authRequest);
         });
     }
