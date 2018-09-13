@@ -82,10 +82,6 @@ app.initApp = function (authServerConfig: WickedAuthServer, callback: SimpleCall
     app._startupSeconds = utils.getUtc();
 
     app.use(prometheusMiddleware.middleware('wicked_auth'));
-    app.get('/metrics', rejectFromKong, prometheusMiddleware.metrics);
-
-    app.get('/ping', answerPing);
-    app.get(basePath + '/ping', answerPing);
     
     function answerPing(req, res, next) {
         debug('/ping');
@@ -137,6 +133,11 @@ app.initApp = function (authServerConfig: WickedAuthServer, callback: SimpleCall
         return req.correlationId;
     });
     app.use(logger('{"date":":date[clf]","method":":method","url":":url","remote-addr":":remote-addr","version":":http-version","status":":status","content-length":":res[content-length]","referrer":":referrer","response-time":":response-time","correlation-id":":correlation-id"}'));
+
+    app.get('/metrics', rejectFromKong, prometheusMiddleware.metrics);
+
+    app.get('/ping', answerPing);
+    app.get(basePath + '/ping', answerPing);
 
     app.use(bodyParser.json());
     app.use(bodyParser.urlencoded({ extended: false }));
