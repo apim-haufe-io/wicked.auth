@@ -87,6 +87,11 @@ export class LocalIdP implements IdentityProvider {
                 method: 'post',
                 uri: '/forgotpassword',
                 handler: this.genericFlow.createForgotPasswordPostHandler(this.authMethodId)
+            },
+            {
+                method: 'post',
+                uri: '/changepassword',
+                handler: this.changePasswordHandler
             }
         ];
     }
@@ -100,7 +105,7 @@ export class LocalIdP implements IdentityProvider {
         // pass back the same type of structure as in the authorizeByUserPass below.
         const body = req.body;
         const csrfToken = body._csrf;
-        const expectedCsrfToken = utils.getAndDeleteCsrfToken(req);
+        const expectedCsrfToken = utils.getAndDeleteCsrfToken(req, 'login');
         const instance = this;
 
         if (!csrfToken || csrfToken !== expectedCsrfToken)
@@ -120,9 +125,85 @@ export class LocalIdP implements IdentityProvider {
                 return;
             }
 
-            instance.genericFlow.continueAuthorizeFlow(req, res, next, authResponse);
+            if (authResponse.wickedUserInfo && authResponse.wickedUserInfo.mustChangePassword) {
+                // Force change the password
+                instance.forceChangePasswordFlow(req, res, next, authResponse);
+            } else {
+                // Continue as normal
+                instance.genericFlow.continueAuthorizeFlow(req, res, next, authResponse);
+            }
         });
     };
+
+    private forceChangePasswordFlow(req, res, next, authResponse: AuthResponse): void {
+        debug(`forceChangePasswordFlow()`);
+        const instance = this;
+        const viewModel = utils.createViewModel(req, instance.authMethodId, 'change_password');
+        const authSession = utils.getSession(req, instance.authMethodId);
+        authSession.tmpAuthResponse = authResponse;
+        const authRequest = utils.getAuthRequest(req, instance.authMethodId);
+        utils.render(req, res, 'force_change_password', viewModel, authRequest);
+    }
+
+    private changePasswordHandler = (req, res, next): void => {
+        debug(`POST ${this.authMethodId}/changepassword`);
+
+        const body = req.body;
+        const csrfToken = body._csrf;
+        const expectedCsrfToken = utils.getAndDeleteCsrfToken(req, 'change_password');
+        const instance = this;
+
+        if (!csrfToken || expectedCsrfToken !== csrfToken) {
+            setTimeout(this.renderLogin, 500, req, res, next, 'CSRF validation failed, please try again.');
+            return;
+        }
+
+        // Recaptcha?
+        utils.verifyRecaptcha(req, (err) => {
+            if (err)
+                return failError(401, err, next);
+
+            const authSession = utils.getSession(req, instance.authMethodId);
+            if (!authSession.tmpAuthResponse) {
+                failMessage(400, 'Invalid session state. Forged password change request?', next);
+                return;
+            }
+
+            // Sanitize input; should be okay...
+            const password = body.password;
+            const password2 = body.password2;
+
+            if (!password)
+                return failMessage(400, 'Password cannot be empty', next);
+            if (password !== password2)
+                return failMessage(400, 'Passwords do not match', next);
+
+            const authResponse = authSession.tmpAuthResponse;
+            // Take this out of the session. It will go somewhere else in the generic part (see
+            // continueAuthorizeFlow()).
+            delete authSession.tmpAuthResponse;
+            wicked.getUser(authResponse.wickedUserInfo.id, function (err, userInfo) {
+                if (err) {
+                    failError(500, err, next);
+                    return;
+                }
+                wicked.patchUser(userInfo.id, {
+                    email: userInfo.email,
+                    groups: userInfo.groups,
+                    password: password,
+                    mustChangePassword: false
+                }, function (err, updatedUserInfo) {
+                    if (err) {
+                        failError(500, err, next);
+                        return;
+                    }
+
+                    // Happy as can be, we can continue with the authorization.
+                    instance.genericFlow.continueAuthorizeFlow(req, res, next, authResponse);
+                });
+            });
+        });
+    }
 
     private signupHandler = (req, res, next) => {
         debug(`GET ${this.authMethodId}/signup`);
@@ -136,7 +217,7 @@ export class LocalIdP implements IdentityProvider {
 
         const body = req.body;
         const csrfToken = body._csrf;
-        const expectedCsrfToken = utils.getAndDeleteCsrfToken(req);
+        const expectedCsrfToken = utils.getAndDeleteCsrfToken(req, 'signup');
         const instance = this;
 
         if (!csrfToken || expectedCsrfToken !== csrfToken)
@@ -224,12 +305,14 @@ export class LocalIdP implements IdentityProvider {
     private renderLogin(req, res, next, flashMessage: string, prefillUsername?: string) {
         debug('renderLogin()');
         const authRequest = utils.getAuthRequest(req, this.authMethodId);
+        const authSession = utils.getSession(req, this.authMethodId);
+        authSession.tmpAuthResponse = null;
         const instance = this;
 
         this.checkSignupDisabled(authRequest.api_id, (err, disableSignup) => {
             if (err)
                 return failError(500, err, next);
-            const viewModel = utils.createViewModel(req, instance.authMethodId);
+            const viewModel = utils.createViewModel(req, instance.authMethodId, 'login');
             viewModel.errorMessage = flashMessage;
             viewModel.disableSignup = disableSignup;
             if (prefillUsername)
@@ -264,7 +347,7 @@ export class LocalIdP implements IdentityProvider {
             warn(`makeAuthorizeUrl: Auth Request does not contain a redirect_uri`);
             return null;
         }
-        let authorizeUrl = `${this.authMethodId}/api/${authRequest.api_id}/authorize?` + 
+        let authorizeUrl = `${this.authMethodId}/api/${authRequest.api_id}/authorize?` +
             `client_id=${qs.escape(authRequest.client_id)}` +
             `&response_type=${authRequest.response_type}` +
             `&redirect_uri=${qs.escape(authRequest.redirect_uri)}`;
@@ -288,7 +371,7 @@ export class LocalIdP implements IdentityProvider {
             if (disableSignup)
                 return failMessage(403, 'Signup is not allowed.', next);
 
-            const viewModel = utils.createViewModel(req, this.authMethodId);
+            const viewModel = utils.createViewModel(req, this.authMethodId, 'signup');
             viewModel.errorMessage = flashMessage;
             viewModel.authorizeUrl = instance.makeAuthorizeUrl(req);
             utils.render(req, res, 'signup', viewModel, authRequest);
@@ -339,9 +422,9 @@ export class LocalIdP implements IdentityProvider {
     private createAuthResponse(userInfo: WickedUserInfo): AuthResponse {
         debug('createAuthResponse()');
 
-        // TODO: Namespace handling
         return {
             userId: userInfo.id,
+            wickedUserInfo: userInfo,
             defaultGroups: userInfo.groups,
             defaultProfile: this.createDefaultProfile(userInfo)
         };

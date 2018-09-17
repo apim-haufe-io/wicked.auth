@@ -140,7 +140,7 @@ export class GenericOAuth2Router {
                 if (!verificationInfo)
                     return setTimeout(failMessage, ERROR_TIMEOUT, 404, 'The given verification ID is not valid.', next);
 
-                const viewModel = utils.createViewModel(req, authMethodId);
+                const viewModel = utils.createViewModel(req, authMethodId, 'verify');
                 viewModel.email = verificationInfo.email;
                 viewModel.id = verificationId;
 
@@ -164,7 +164,7 @@ export class GenericOAuth2Router {
             debug(`verifyPostHandler(${authMethodId})`);
 
             const body = req.body;
-            const expectedCsrfToken = utils.getAndDeleteCsrfToken(req);
+            const expectedCsrfToken = utils.getAndDeleteCsrfToken(req, 'verify');
             const csrfToken = body._csrf;
             const verificationId = body.verification_id;
             const verificationType = body.type;
@@ -229,23 +229,23 @@ export class GenericOAuth2Router {
         };
     };
 
-    public createForgotPasswordHandler(authMethodId): ExpressHandler {
+    public createForgotPasswordHandler(authMethodId: string): ExpressHandler {
         debug(`createForgotPasswordHandler(${authMethodId})`);
         return (req, res, next) => {
             debug(`forgotPasswordHandler(${authMethodId})`);
 
-            const viewModel = utils.createViewModel(req, authMethodId);
+            const viewModel = utils.createViewModel(req, authMethodId, 'forgot_password');
             return utils.render(req, res, 'forgot_password', viewModel);
         };
     }
 
-    public createForgotPasswordPostHandler(authMethodId): ExpressHandler {
+    public createForgotPasswordPostHandler(authMethodId: string): ExpressHandler {
         debug(`createForgotPasswordPostHandler(${authMethodId})`);
         return function (req, res, next): void {
             debug(`forgotPasswordPostHandler(${authMethodId})`);
 
             const body = req.body;
-            const expectedCsrfToken = utils.getAndDeleteCsrfToken(req);
+            const expectedCsrfToken = utils.getAndDeleteCsrfToken(req, 'forgot_password');
             const csrfToken = body._csrf;
             const email = body.email;
 
@@ -782,7 +782,7 @@ export class GenericOAuth2Router {
         }, (err, results: WickedNamespace[]) => {
             if (err)
                 return failError(500, err, next);
-            const viewModel = utils.createViewModel(req, instance.authMethodId);
+            const viewModel = utils.createViewModel(req, instance.authMethodId, 'select_namespace');
             debug(results);
             const tmpNs = [];
             for (let i = 0; i < results.length; ++i) {
@@ -807,7 +807,7 @@ export class GenericOAuth2Router {
             debug(`selectNamespacePostHandler(${authMethodId})`);
             const body = req.body;
             debug(body);
-            const expectedCsrfToken = utils.getAndDeleteCsrfToken(req);
+            const expectedCsrfToken = utils.getAndDeleteCsrfToken(req, 'select_namespace');
             const csrfToken = body._csrf;
 
             if (!csrfToken || expectedCsrfToken !== csrfToken) {
@@ -850,7 +850,7 @@ export class GenericOAuth2Router {
             debug('Default profile:');
             debug(authResponse.defaultProfile);
 
-            const viewModel = utils.createViewModel(req, this.authMethodId);
+            const viewModel = utils.createViewModel(req, this.authMethodId, 'register');
             viewModel.userId = authResponse.userId;
             viewModel.customId = authResponse.customId;
             viewModel.defaultProfile = authResponse.defaultProfile;
@@ -1005,7 +1005,7 @@ export class GenericOAuth2Router {
                         return failError(500, err, next);
                     debug('Creating view model for grant scope form');
 
-                    const viewModel = utils.createViewModel(req, instance.authMethodId);
+                    const viewModel = utils.createViewModel(req, instance.authMethodId, 'grants');
                     viewModel.grantRequests = instance.makeScopeList(missingGrants, apiInfo.settings.scopes);
                     viewModel.apiInfo = apiInfo;
                     viewModel.appInfo = appInfo;
@@ -1053,7 +1053,7 @@ export class GenericOAuth2Router {
         return (req, res, next): void => {
             debug(`grantPostHandler(${authMethodId})`);
             const body = req.body;
-            const expectedCsrfToken = utils.getAndDeleteCsrfToken(req);
+            const expectedCsrfToken = utils.getAndDeleteCsrfToken(req, 'grants');
             const csrfToken = body._csrf;
             const action = body._action;
             debug(`grantPostHandler(${authMethodId}, action: ${action})`);

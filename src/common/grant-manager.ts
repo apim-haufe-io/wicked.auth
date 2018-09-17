@@ -78,7 +78,7 @@ export class GrantManager {
                 if (err)
                     return failError(500, err, next);
 
-                const viewModel = utils.createViewModel(req, instance.authMethodId);
+                const viewModel = utils.createViewModel(req, instance.authMethodId, 'user_scopes');
                 viewModel.grants = extendedGrantList;
                 if (flashMessage)
                     viewModel.flashMessage = flashMessage
@@ -97,7 +97,7 @@ export class GrantManager {
 
         const body = req.body;
         const csrfToken = body._csrf;
-        const expectedCsrfToken = utils.getAndDeleteCsrfToken(req);
+        const expectedCsrfToken = utils.getAndDeleteCsrfToken(req, 'user_scopes');
 
         if (!csrfToken || csrfToken !== expectedCsrfToken)
             return this.renderUserScopesWithMessage(req, res, next, { type: FlashType.Error, message: 'Suspected login forging detected (CSRF protection).' });

@@ -1,6 +1,6 @@
 'use strict';
 
-import { OidcProfile, WickedApiScopes, WickedSubscriptionInfo, WickedScopeGrant, Callback } from "wicked-sdk";
+import { OidcProfile, WickedApiScopes, WickedSubscriptionInfo, WickedScopeGrant, Callback, WickedUserInfo } from "wicked-sdk";
 
 export interface OAuth2Request {
     api_id: string,
@@ -47,6 +47,8 @@ export interface AuthRequestCallback {
 
 export interface AuthResponse {
     userId?: string,
+    /** This is used only in the local auth method */
+    wickedUserInfo?: WickedUserInfo,
     customId?: string,
     groups?: string[],
     defaultProfile: OidcProfile,
