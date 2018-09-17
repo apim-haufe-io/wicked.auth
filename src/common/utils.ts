@@ -2,6 +2,7 @@
 
 const cors = require('cors');
 const { debug, info, warn, error } = require('portal-env').Logger('portal-auth:utils');
+const passwordValidator = require('portal-env').PasswordValidator;
 import * as wicked from 'wicked-sdk';
 const async = require('async');
 const crypto = require('crypto');
@@ -13,7 +14,7 @@ const qs = require('querystring');
 
 import { failMessage, failError, failOAuth, makeError } from './utils-fail';
 import { NameSpec, StringCallback, SimpleCallback, AuthRequest, AuthResponse, AuthSession } from './types';
-import { OidcProfile, WickedApi, WickedPool, Callback, WickedUserShortInfo, WickedError } from 'wicked-sdk';
+import { OidcProfile, WickedApi, WickedPool, Callback, WickedUserShortInfo, WickedError, WickedPasswordStrategy } from 'wicked-sdk';
 
 const ERROR_TIMEOUT = 500; // ms
 
@@ -478,6 +479,29 @@ export const utils = {
     }
 };
 
+let _globalI18n = {};
+function loadGlobalI18n(desiredLanguage) {
+    if (_globalI18n[desiredLanguage])
+        return _globalI18n[desiredLanguage];
+    const fileName = path.join(__dirname, '..', 'views', `password_validation.${desiredLanguage}.json`);
+    const strategyName = wicked.getPasswordStrategy();
+    const passwordStrategy = passwordValidator.getStrategy(strategyName) as WickedPasswordStrategy;
+    const i18n = JSON.parse(fs.readFileSync(fileName));
+
+    const translations = {
+        password_rules: i18n[strategyName],
+        password_regex: passwordStrategy.regex
+    };
+    _globalI18n[desiredLanguage] = translations;
+    return translations;
+}
+
+function mergeGlobalI18n(i18n, desiredLanguage) {
+    const globalI18n = loadGlobalI18n(desiredLanguage);
+    for (let k in globalI18n)
+        i18n[k] = globalI18n[k];
+}
+
 const _i18nMap = new Map<string, object>();
 function getI18n(req, template: string): object {
     debug(`getI18n(${template})`);
@@ -498,6 +522,7 @@ function getI18n(req, template: string): object {
         return {}
     }
     const i18n = JSON.parse(fs.readFileSync(i18nFile, 'utf8'));
+    mergeGlobalI18n(i18n, desiredLanguage);
     _i18nMap.set(key, i18n);
     return i18n;
 }

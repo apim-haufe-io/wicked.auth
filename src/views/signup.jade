@@ -11,25 +11,26 @@ block scripts
             var passwordError = '';
             var password2Error = '';
             if (!email)
-                emailError = 'Please enter a value for the email address. ';
+                emailError = '#{i18n.email_error}';
             else if (!/.+@.+/.test(email))
-                emailError = 'Email has to be a valid email address.';
+                emailError = '#{i18n.email_invalid}';
             if (!password)
-                passwordError = 'Please enter your password.';
+                passwordError = '#{i18n.enter_password}';
             if (!password2)
-                password2Error = 'Please repeat your password.';
+                password2Error = '#{i18n.repeat_password}';
             if (!password2Error && password !== password2)
-                password2Error = 'Passwords do not match';
+                password2Error = '#{i18n.password_mismatch}';
+            var regex = new RegExp('#{i18n.password_regex}');
             if (!password
-                || (password.length < 6 || password.length > 24))
-                passwordError = 'Please enter a password, more than 5, less than 25 characters long.';
+                || !regex.test(password))
+                passwordError = '#{i18n.password_rules}';
 
             try {
                 $('#errorEmail').text(emailError);
                 $('#errorPassword').text(passwordError);
                 $('#errorPassword2').text(password2Error);
             } catch (err) {
-                alert('Validation errored! Check your input values.');
+                alert('#{i18n.validation_error}');
                 return false;
             }
             
@@ -41,12 +42,12 @@ block scripts
         }
 
 block content
-    h2 Sign up
+    h2 #{i18n.signup}
     
-    p Welcome to the #{title}.
+    p #{i18n.welcome_to} #{title}.
 
     if displayRedirectMessage
-        h4 You will be redirected to the desired page right after successfully logging in.
+        h4 #{i18n.redirect_message}
 
     h4.
         By signing up to this portal, you agree to our <a target='_blank' href='#{portalUrl}content/terms-and-conditions'>Terms
@@ -60,27 +61,27 @@ block content
         input(type='hidden' name='_csrf' value='#{csrfToken}')
 
         .form-group
-            label(for='email') E-Mail address (username):
+            label(for='email') #{i18n.username}:
             input(type='string' name='email' id='email').form-control
             small 
                 span(id='errorEmail' style='color:red')
         .form-group
-            label(for='password') Password:
+            label(for='password') #{i18n.password}:
             input(type='password' name='password' id='password').form-control
             small
                 span(id='errorPassword' style='color:red')
         .form-group
-            label(for='password2') Password (repeat):
+            label(for='password2') #{i18n.password_repeat}:
             input(type='password' name='password2' id='password2').form-control
             small
                 span(id='errorPassword2' style='color:red')
         if recaptcha && recaptcha.useRecaptcha
             div(class='g-recaptcha' data-sitekey='#{recaptcha.websiteKey}')
             br
-        button(class='btn btn-lg btn-primary btn-block' type='submit') Sign up
+        button(class='btn btn-lg btn-primary btn-block' type='submit') #{i18n.signup}
     
     if authorizeUrl
         h5
-            a(href='#{baseUrl}/#{authorizeUrl}') Log in with an existing user
+            a(href='#{baseUrl}/#{authorizeUrl}') #{i18n.login_existing}
     h5
-        a(href='#{baseUrl}/#{forgotPasswordUrl}') Forgot password?
+        a(href='#{baseUrl}/#{forgotPasswordUrl}') #{i18n.forgot_password}
