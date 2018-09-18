@@ -46,9 +46,19 @@ export class LocalIdP implements IdentityProvider {
     public authorizeByUserPass(user, pass, callback: Callback<AuthResponse>) {
         debug('authorizeByUserPass()');
 
-        // loginUser already returns an authResponse, so we can just
-        // pipe the callback to the upstream callback.
-        return this.loginUser(user, pass, callback);
+        // loginUser returns an authResponse, so we can use that to verify that the user
+        // does not interactively have to change his password.
+        this.loginUser(user, pass, function (err, authResponse: AuthResponse) {
+            if (err)
+                return callback(err);
+            // Check for "mustChangePassword"; we won't allow this without the user having
+            // changed the password.
+            // if (authResponse.wickedUserInfo && authResponse.wickedUserInfo.mustChangePassword) {
+            //     return failOAuth(400, 'invalid_request', 'Headless authentication now allowed, user must interactively update password first.', callback);
+            // } else {
+                return callback(null, authResponse);
+            // }
+        });
     }
 
     public checkRefreshToken(tokenInfo, callback: Callback<CheckRefreshDecision>) {

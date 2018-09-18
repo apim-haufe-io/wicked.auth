@@ -1219,8 +1219,12 @@ export class GenericOAuth2Router {
                         // Don't answer wrong logins immediately please.
                         // TODO: The error message must be IdP specific, can be some other type
                         // of error than just wrong username or password.
+                        let code = 'invalid_request';
+                        let msg = 'Invalid username or password.';
+                        if (err.message)
+                            msg += ' ' + err.message;
                         setTimeout(() => {
-                            return failOAuth(err.statusCode, 'invalid_request', 'invalid username or password', callback);
+                            return failOAuth(err.statusCode, code, msg, callback);
                         }, 500);
                         return;
                     }
