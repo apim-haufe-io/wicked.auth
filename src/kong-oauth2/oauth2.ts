@@ -1,6 +1,6 @@
 'use strict';
 
-import * as qs from 'querystring';
+import * as crypto from 'crypto';
 import { SimpleCallback, StringCallback, AuthRequest, TokenRequest, OAuth2Request, AccessToken, AccessTokenCallback } from '../common/types';
 import { WickedApplication, WickedSubscription, KongApi, WickedApi, Callback } from 'wicked-sdk';
 const { debug, info, warn, error } = require('portal-env').Logger('portal-auth:oauth2');
@@ -9,7 +9,7 @@ import * as wicked from 'wicked-sdk';
 const request = require('request');
 
 import { utils } from '../common/utils';
-import { kongUtils }  from './kong-utils';
+import { kongUtils } from './kong-utils';
 import { failOAuth } from '../common/utils-fail';
 
 // We need this to accept self signed and Let's Encrypt certificates
@@ -364,8 +364,8 @@ function validateTokenAuthorizationCode(inputData: TokenRequest, callback: Simpl
     debug('validateTokenAuthorizationCode()');
     if (!inputData.client_id)
         return failOAuth(400, 'invalid_request', 'client_id is missing', callback);
-    if (!inputData.client_secret)
-        return failOAuth(400, 'invalid_request', 'client_secret is missing', callback);
+    if (!inputData.client_secret && !inputData.code_verifier)
+        return failOAuth(400, 'invalid_request', 'client_secret or code_verifier is missing', callback);
     if (!inputData.code)
         return failOAuth(400, 'invalid_request', 'code is missing', callback);
     callback(null);
@@ -715,6 +715,7 @@ function tokenFlow(inputData: TokenRequest, tokenKongInvoker: TokenKongInvoker, 
 // end point. Maybe it might be a good idea to make this behaviour configurable.
 function validateTokenRequest(oauthInfo: TokenOAuthInfo, callback: TokenOAuthInfoCallback) {
     debug('validateTokenRequest()');
+    debug(oauthInfo.inputData);
     const appId = oauthInfo.appInfo.id;
     const grantType = oauthInfo.inputData.grant_type;
     switch (grantType) {
@@ -731,17 +732,51 @@ function validateTokenRequest(oauthInfo: TokenOAuthInfo, callback: TokenOAuthInf
             }
 
             break;
-        // These two grants *require* a confidential client, i.e. one which is able
-        // to store secrets confidentially (not an app or SPA).
+        // The client credentials flow *requires* a confidential (non-public client)
         case 'client_credentials':
-        case 'authorization_code':
             if (!oauthInfo.appInfo.confidential)
                 return failOAuth(401, 'unauthorized_client', `the application ${appId} is not declared as a confidential application, thus cannot request access tokens via grant ${grantType}.`, callback);
             if (!oauthInfo.inputData.client_secret)
                 return failOAuth(400, 'unauthorized_client', 'client_secret is missing.', callback);
             break;
+        // For the authorization code to work with a public client, PKCE must be active
+        case 'authorization_code':
+            if (oauthInfo.appInfo.confidential) {
+                if (!oauthInfo.inputData.client_secret)
+                    return failOAuth(400, 'unauthorized_client', 'client_secret is missing.', callback);
+            } else {
+                debug(`validateTokenRequest: Validate PKCE`)
+                debug(oauthInfo.inputData);
+                // Verify PKCE
+                if (oauthInfo.inputData.client_secret)
+                    return failOAuth(400, 'unauthorized_client', `the application ${appId} is a public client and must not pass in its client_secret (must not be part of deployed application)`, callback);
+                if (!oauthInfo.inputData.code_verifier)
+                    return failOAuth(400, 'invalid_request', `the application ${appId} is not declared as a confidential application, and does not pass in a code_verifier, thus cannot request access tokens via grant ${grantType}.`, callback);
+                if (!oauthInfo.inputData.code_challenge || !oauthInfo.inputData.code_challenge_method)
+                    return failOAuth(400, 'invalid_request', 'the authorization code flow was started without a code_challenge, but a code_verifier was passed in.', callback);
+                if (!verifyPKCE(oauthInfo.inputData))
+                    return failOAuth(400, 'invalid_grant', `PKCE verification failed (method ${oauthInfo.inputData.code_challenge_method})`, callback);
+                // PKCE good, let's add the client_secret so that Kong doesn't complain
+                oauthInfo.inputData.client_secret = oauthInfo.subsInfo.clientSecret;
+            }
+            break;
     }
     return callback(null, oauthInfo);
+}
+
+function verifyPKCE(tokenRequest: TokenRequest): boolean {
+    debug(`verifyPKCE(code_challenge: ${tokenRequest.code_challenge}, code_challenge_method: ${tokenRequest.code_challenge_method}, code_verifier: ${tokenRequest.code_verifier})`);
+    switch (tokenRequest.code_challenge_method) {
+        case "plain":
+            return tokenRequest.code_challenge === tokenRequest.code_verifier;
+        case "S256":
+            const sha256 = crypto.createHash('sha256');
+            sha256.update(tokenRequest.code_verifier);
+            const codeVerifierSHA256 = sha256.digest('base64');
+            return tokenRequest.code_challenge === codeVerifierSHA256;
+    }
+    error(`verifyPKCE: Unknown code_challenge_method ${tokenRequest.code_challenge_method}`);
+    return false;
 }
 
 function getTokenRequest(grantType: string, oauthInfo: TokenOAuthInfo, callback: TokenRequestPayloadCallback) {
@@ -786,7 +821,7 @@ function getTokenRequest(grantType: string, oauthInfo: TokenOAuthInfo, callback:
             tokenBody = {
                 grant_type: grantType,
                 client_id: oauthInfo.inputData.client_id,
-                client_secret: oauthInfo.inputData.client_secret, 
+                client_secret: oauthInfo.inputData.client_secret,
                 code: oauthInfo.inputData.code,
                 redirect_uri: oauthInfo.appInfo.redirectUri
             };

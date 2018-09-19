@@ -1,7 +1,7 @@
 'use strict';
 
-import { NumberCallback, SimpleCallback, TokenResponse, OidcProfileCallback } from "./types";
-import { OidcProfile } from "wicked-sdk";
+import { NumberCallback, SimpleCallback, TokenResponse, OidcProfileEx } from "./types";
+import { Callback } from "wicked-sdk";
 
 const crypto = require('crypto');
 import * as wicked from 'wicked-sdk';
@@ -42,7 +42,7 @@ export class ProfileStore {
         });
     };
 
-    public registerTokenOrCode = (tokenResponse: TokenResponse, apiId: string, profile: OidcProfile, callback: SimpleCallback) => {
+    public registerTokenOrCode = (tokenResponse: TokenResponse, apiId: string, profile: OidcProfileEx, callback: SimpleCallback) => {
         debug(`registerTokenOrCode(${apiId})`);
         if (tokenResponse.access_token) {
             // Easy case, it's a JSON answer
@@ -86,7 +86,7 @@ export class ProfileStore {
         });
     };
 
-    public store = (token: string, apiId: string, profile: OidcProfile, callback: SimpleCallback) => {
+    public store = (token: string, apiId: string, profile: OidcProfileEx, callback: SimpleCallback) => {
         debug('store()');
         const instance = this;
         this.getTtlSeconds(apiId, function (err, ttlSeconds) {
@@ -99,7 +99,7 @@ export class ProfileStore {
         });
     };
 
-    public retrieve = (token, callback: OidcProfileCallback) => {
+    public retrieve = (token: string, callback: Callback<OidcProfileEx>) => {
         debug('retrieve()');
 
         const redis = redisConnection.getRedis();
@@ -112,7 +112,7 @@ export class ProfileStore {
         });
     };
 
-    private hashToken(token) {
+    private hashToken(token: string): string {
         const sha256 = crypto.createHash('sha256');
         sha256.update(token);
         return sha256.digest('hex');

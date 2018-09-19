@@ -423,6 +423,8 @@ export class GenericOAuth2Router {
             const givenPrompt = req.query.prompt;
             // This is not OAuth2 compliant, but needed
             const givenNamespace = req.query.namespace;
+            const givenCodeChallenge = req.query.code_challenge;
+            const givenCodeChallengeMethod = req.query.code_challenge_method;
 
             const authRequest = instance.initAuthRequest(req);
             authRequest.api_id = apiId;
@@ -433,6 +435,9 @@ export class GenericOAuth2Router {
             authRequest.scope = givenScope;
             authRequest.prompt = givenPrompt;
             authRequest.namespace = givenNamespace;
+            // PKCE, RFC 7636
+            authRequest.code_challenge = givenCodeChallenge;
+            authRequest.code_challenge_method = givenCodeChallengeMethod;
 
             // Validate parameters first now (TODO: This is pbly feasible centrally,
             // it will be the same for all Auth Methods).
@@ -1174,6 +1179,12 @@ export class GenericOAuth2Router {
             if (!redirectUri.redirect_uri)
                 return failMessage(500, 'Server error, no redirect URI returned.', next);
             let uri = redirectUri.redirect_uri;
+            // In the PKCE case, also associate the code_challenge and code_challenge_method with
+            // the profile, as we need to verify those when getting the token. These may both be
+            // null, but that is okay.
+            userProfile.code_challenge = authRequest.code_challenge;
+            userProfile.code_challenge_method = authRequest.code_challenge_method;
+            
             // For this redirect_uri, which can contain either a code or an access token,
             // associate the profile (userInfo).
             profileStore.registerTokenOrCode(redirectUri, authRequest.api_id, userProfile, function (err) {

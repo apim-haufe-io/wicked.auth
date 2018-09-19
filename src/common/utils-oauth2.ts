@@ -69,8 +69,20 @@ export class UtilsOAuth2 {
                 error(`Received redirect_uri: ${uri1}`);
                 return failMessage(400, 'The provided redirect_uri does not match the registered redirect_uri', callback);
             }
-
             // Now we have a redirect_uri; we can now make use of failOAuth
+
+            // Check for PKCE for public apps using the authorization code grant
+            if (authRequest.response_type === 'code' &&
+                application.confidential !== true) {
+                if (!authRequest.code_challenge)
+                    return failOAuth(400, 'invalid_request', 'the given client is a public client; it must present a code_challenge (PKCE, RFC7636) to use the authorization code grant.', callback);
+                if (!authRequest.code_challenge_method)
+                    authRequest.code_challenge_method = 'plain'; // Default
+                if (authRequest.code_challenge_method !== 'plain' &&
+                    authRequest.code_challenge_method !== 'S256')
+                    return failOAuth(400, 'invalid_request', 'unsupported code_challenge_method; expected "plain" or "S256".', callback);
+            }
+
             // Success
             return callback(null, subsValidation);
         });
@@ -175,7 +187,9 @@ export class UtilsOAuth2 {
             scope: req.body.scope,
             username: req.body.username,
             password: req.body.password,
-            refresh_token: req.body.refresh_token
+            refresh_token: req.body.refresh_token,
+            // PKCE
+            code_verifier: req.body.code_verifier
         };
         if (!tokenRequest.client_id) {
             // Check for Basic Auth
@@ -225,8 +239,9 @@ export class UtilsOAuth2 {
                 return failOAuth(400, 'invalid_request', 'code is missing.', callback);
             if (!tokenRequest.client_id)
                 return failOAuth(400, 'invalid_client', 'client_id is missing.', callback);
-            if (!tokenRequest.client_secret)
-                return failOAuth(400, 'invalid_client', 'client_secret is missing.', callback);
+            if (!tokenRequest.client_secret && !tokenRequest.code_verifier) {
+                return failOAuth(400, 'invalid_client', 'client_secret or code_verifier is missing.', callback);
+            }
         } else if (tokenRequest.grant_type === 'password') {
             if (!tokenRequest.client_id)
                 return failOAuth(400, 'invalid_client', 'client_id is missing.', callback);
@@ -266,11 +281,15 @@ export class UtilsOAuth2 {
 
     public tokenAuthorizationCode = (tokenRequest: TokenRequest, callback: AccessTokenCallback) => {
         debug('tokenAuthorizationCode()');
-        // We can just pass this on to the wicked SDK, and the register the token.
-        oauth2.token(tokenRequest, (err, accessToken) => {
+        profileStore.retrieve(tokenRequest.code, (err, profile) => {
             if (err)
                 return callback(err);
-            profileStore.retrieve(tokenRequest.code, (err, profile) => {
+            tokenRequest.code_challenge = profile.code_challenge;
+            tokenRequest.code_challenge_method = profile.code_challenge_method;
+            delete profile.code_challenge;
+            delete profile.code_challenge_method;
+            // We can just pass this on to the wicked SDK, and the register the token.
+            oauth2.token(tokenRequest, (err, accessToken) => {
                 if (err)
                     return callback(err);
                 accessToken.session_data = profile;

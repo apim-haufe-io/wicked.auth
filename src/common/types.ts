@@ -25,7 +25,13 @@ export interface TokenRequest extends OAuth2Request {
     code?: string,
     username?: string,
     password?: string,
-    refresh_token?: string
+    refresh_token?: string,
+    // PKCE, RFC 7636
+    // code_challenge is retrieved from the profile store where it's stored
+    // temporarily while the client is preparing the actual token request.
+    code_challenge?: string,
+    code_challenge_method?: string,
+    code_verifier?: string
 }
 
 export interface AuthRequest extends OAuth2Request {
@@ -33,6 +39,9 @@ export interface AuthRequest extends OAuth2Request {
     redirect_uri?: string,
     state?: string,
     prompt?: string,
+    // PKCE, RFC7636
+    code_challenge?: string,
+    code_challenge_method?: string,
     trusted?: boolean,
     scopesDiffer?: boolean,
     plain?: boolean,
@@ -54,7 +63,7 @@ export interface AuthResponse {
     defaultProfile: OidcProfile,
     defaultGroups: string[],
     registrationPool?: string,
-    profile?: OidcProfile
+    profile?: OidcProfileEx
 }
 
 export interface GrantProcessInfo {
@@ -230,9 +239,11 @@ export interface NumberCallback {
     (err, n?: number): void
 };
 
-export interface OidcProfileCallback {
-    (err, profile?: OidcProfile): void
-};
+export interface OidcProfileEx extends OidcProfile {
+    // extension for temporary storing PKCE challenge inside profile
+    code_challenge?: string,
+    code_challenge_method?: string
+}
 
 export interface WickedApiScopesCallback {
     (err, apiScopes?: WickedApiScopes): void
