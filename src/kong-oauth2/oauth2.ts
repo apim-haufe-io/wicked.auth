@@ -752,6 +752,9 @@ function validateTokenRequest(oauthInfo: TokenOAuthInfo, callback: TokenOAuthInf
                     return failOAuth(400, 'unauthorized_client', `the application ${appId} is a public client and must not pass in its client_secret (must not be part of deployed application)`, callback);
                 if (!oauthInfo.inputData.code_verifier)
                     return failOAuth(400, 'invalid_request', `the application ${appId} is not declared as a confidential application, and does not pass in a code_verifier, thus cannot request access tokens via grant ${grantType}.`, callback);
+                const codeVerifier = oauthInfo.inputData.code_verifier;
+                if (codeVerifier.length < 43 || codeVerifier.length > 128)
+                    return failOAuth(400, 'invalid_request', 'code_verifier has to be at least 43 characters and at most 128 characters', callback);
                 if (!oauthInfo.inputData.code_challenge || !oauthInfo.inputData.code_challenge_method)
                     return failOAuth(400, 'invalid_request', 'the authorization code flow was started without a code_challenge, but a code_verifier was passed in.', callback);
                 if (!verifyPKCE(oauthInfo.inputData))
