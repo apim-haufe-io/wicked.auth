@@ -253,7 +253,7 @@ export class GenericOAuth2Router {
                 setTimeout(failMessage, ERROR_TIMEOUT, 403, 'CSRF validation failed.', next);
                 return;
             }
-            let emailValid = /.+@.+/.test(email);
+            let emailValid = /^(([^<>()[\]\\.,;:\s@\"]+(\.[^<>()[\]\\.,;:\s@\"]+)*)|(\".+\"))@((\[[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}\])|(([a-zA-Z\-0-9]+\.)+[a-zA-Z]{2,}))$/.test(email);
             if (emailValid) {
                 // Try to retrieve the user from the database
                 wicked.getUserByEmail(email, (err, userInfoList) => {
