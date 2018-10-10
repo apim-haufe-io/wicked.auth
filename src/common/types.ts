@@ -66,6 +66,11 @@ export interface AuthResponse {
     profile?: OidcProfileEx
 }
 
+export interface SamlAuthResponse extends AuthResponse {
+    name_id: string,
+    session_index: string
+}
+
 export interface GrantProcessInfo {
     missingGrants: string[],
     existingGrants: WickedScopeGrant[]
@@ -94,6 +99,7 @@ export interface IdentityProvider {
     getType: () => string,
     getRouter: () => any,
     authorizeWithUi: (req, res, next, authRequest: AuthRequest) => void,
+    logoutHook?: (req, res, next, redirect_uri: string) => boolean,
     endpoints: () => EndpointDefinition[],
     authorizeByUserPass: (user: string, pass: string, callback: Callback<AuthResponse>) => void,
     checkRefreshToken: (tokenInfo, callback: Callback<CheckRefreshDecision>) => void

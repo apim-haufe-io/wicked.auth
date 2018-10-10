@@ -1,12 +1,13 @@
 'use strict';
 
 import { GenericOAuth2Router } from '../common/generic-router';
-import { AuthRequest, EndpointDefinition, AuthResponse, IdentityProvider, IdpOptions, SamlIdpConfig, CheckRefreshDecision } from '../common/types';
+import { AuthRequest, EndpointDefinition, AuthResponse, IdentityProvider, IdpOptions, SamlIdpConfig, CheckRefreshDecision, BooleanCallback, SamlAuthResponse } from '../common/types';
 import { OidcProfile, Callback } from 'wicked-sdk';
 const { debug, info, warn, error } = require('portal-env').Logger('portal-auth:idp');
 const Router = require('express').Router;
 const saml2 = require('saml2-js');
 const mustache = require('mustache');
+const qs = require('querystring');
 
 import { utils } from '../common/utils';
 import { failMessage, failError, failOAuth, makeError } from '../common/utils-fail';
@@ -90,6 +91,58 @@ export class SamlIdP implements IdentityProvider {
     };
 
     /**
+     * When a user logs out using the /logout endpoint, and the user has a SAML
+     * session running, also log out (SSO) with the SAML IdP. We use the redirect_uri
+     * from the logout as RelayState, so that we can redirect back to the /logout
+     * URL, which then in turn can fire off the logoutHooks for the other IdP (or e.g.
+     * for additional SAML IdPs).
+     * 
+     * @param redirect_uri 
+     */
+    public logoutHook(req, res, next, redirect_uri: string): boolean {
+        debug('logoutHook()');
+        if (!req.session || !req.session[this.authMethodId])
+            return false; // Nothing to do, not logged in.
+        debug('Trying to SAML Logout.');
+        const instance = this;
+        try {
+            const authResponse = utils.getAuthResponse(req, instance.authMethodId) as SamlAuthResponse;
+            const options: any = {
+                name_id: authResponse.name_id,
+                session_index: authResponse.session_index
+            };
+            // Now we kill our session state.
+            utils.deleteSession(req, instance.authMethodId);
+
+            if (redirect_uri)
+                options.relay_state = Buffer.from(redirect_uri).toString('base64');
+            instance.serviceProvider.create_logout_request_url(
+                instance.identityProvider,
+                options,
+                function (err, logoutUrl) {
+                    if (err) {
+                        error(err);
+                        next(err);
+                        return;
+                    }
+                    debug('logoutUrl:');
+                    debug(logoutUrl);
+                    res.redirect(logoutUrl);
+                    return;
+                }
+            );
+            // This means this method will handle returning something to res; the 
+            // app.get(/logout) endpoint will not do anything more as of the first
+            // IdP returning true here.
+            return true;
+        } catch (ex) {
+            error(ex);
+            // Silently just kill all sessions, or at least this one.
+            return false;
+        }
+    }
+
+    /**
      * In case you need additional end points to be registered, pass them
      * back to the generic flow implementation here; they will be registered
      * as "/<authMethodName>/<uri>", and then request will be passed into
@@ -107,6 +160,11 @@ export class SamlIdP implements IdentityProvider {
                 method: 'post',
                 uri: '/assert',
                 handler: this.createAssertHandler()
+            },
+            {
+                method: 'get',
+                uri: '/assert',
+                handler: this.createLogoutHandler()
             }
         ];
     };
@@ -144,6 +202,48 @@ export class SamlIdP implements IdentityProvider {
         }
     }
 
+    private createLogoutHandler() {
+        const instance = this;
+        return function (req, res, next) {
+            debug(`logoutHandler()`);
+            debug(req.query);
+            const options = {
+                request_body: req.query
+            };
+            const relay_state = req.query.RelayState;
+            instance.serviceProvider.redirect_assert(instance.identityProvider, options, function (err, response) {
+                if (err)
+                    return next(err);
+                debug(response);
+                if (response.type === 'logout_request') {
+                    // IdP initiated logout
+                    debug('SAML: logout_request');
+                    const in_response_to = response && response.response_header ? response.response_header.in_response_to : null;
+                    instance.getLogoutResponseUrl(in_response_to, relay_state, function (err, redirectUrl) {
+                        if (err)
+                            return next(err);
+                        info(redirectUrl);
+                        info('Successfully logged out, deleting session state.');
+                        utils.deleteSession(req, instance.authMethodId);
+                        return res.redirect(redirectUrl);
+                    });
+                } else if (response.type === 'logout_response') {
+                    // Response from our logout request
+                    debug('SAML: logout_response');
+                    try {
+                        // Redirect back to our own /logout
+                        let redirect_uri = `${instance.basePath}/logout`;
+                        if (relay_state)
+                            redirect_uri += '?redirect_uri=' + qs.escape((new Buffer(relay_state, 'base64')).toString());
+                        return res.redirect(redirect_uri);
+                    } catch (ex) {
+                        return next(ex);
+                    }
+                }
+            });
+        }
+    }
+
     private createAuthResponse(samlResponse, callback: Callback<AuthResponse>): void {
         debug(`createAuthResponse()`);
         const defaultProfile = this.buildProfile(samlResponse);
@@ -153,11 +253,13 @@ export class SamlIdP implements IdentityProvider {
         const customId = `${this.authMethodId}:${defaultProfile.sub}`;
         defaultProfile.sub = customId;
         debug(defaultProfile);
-        const authResponse: AuthResponse = {
+        const authResponse: SamlAuthResponse = {
             userId: null,
             customId: customId,
             defaultProfile: defaultProfile,
-            defaultGroups: []
+            defaultGroups: [],
+            name_id: samlResponse.user.name_id,
+            session_index: samlResponse.user.session_index
         }
         return callback(null, authResponse);
     }
@@ -188,6 +290,9 @@ export class SamlIdP implements IdentityProvider {
     private getLogoutResponseUrl(inResponseTo, relayState, callback) {
         debug('getLogoutResponseUrl');
         const instance = this;
+        if (!instance.serviceProvider.sso_logout_url) {
+            return callback(makeError('The SAML configuration does not contain a sso_logout_url.', 500));
+        }
         this.serviceProvider.create_logout_response_url(
             instance.identityProvider,
             { in_response_to: inResponseTo, relay_state: relayState },
@@ -198,7 +303,8 @@ export class SamlIdP implements IdentityProvider {
                     return callback(err);
                 }
                 return callback(null, logoutResponseUrl);
-            });
+            }
+        );
     }
 
     private assert(req, requestId, callback) {

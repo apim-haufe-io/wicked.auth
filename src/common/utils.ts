@@ -365,6 +365,13 @@ export const utils = {
         return req.session[authMethodId];
     },
 
+    deleteSession(req, authMethodId): void {
+        debug(`deleteSession(${authMethodId})`);
+        if (!req.session || !req.session[authMethodId])
+            return;
+        delete req.session[authMethodId];
+    },
+
     getAuthRequest: function (req, authMethodId: string): AuthRequest {
         if (!req.session || !req.session[authMethodId])
             throw new WickedError('Invalid session state, not using a browser?', 400);
