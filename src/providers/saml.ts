@@ -111,6 +111,13 @@ export class SamlIdP implements IdentityProvider {
                 name_id: authResponse.name_id,
                 session_index: authResponse.session_index
             };
+
+            // Check that the identityProvider is correctly configured
+            if (!instance.identityProvider.sso_logout_url) {
+                next(makeError('The SAML configuration does not contain an sso_logout_url.', 500));
+                return true;
+            }
+
             // Now we kill our session state.
             utils.deleteSession(req, instance.authMethodId);
 
@@ -291,7 +298,7 @@ export class SamlIdP implements IdentityProvider {
         debug('getLogoutResponseUrl');
         const instance = this;
         if (!instance.serviceProvider.sso_logout_url) {
-            return callback(makeError('The SAML configuration does not contain a sso_logout_url.', 500));
+            return callback(makeError('The SAML configuration does not contain an sso_logout_url.', 500));
         }
         this.serviceProvider.create_logout_response_url(
             instance.identityProvider,
