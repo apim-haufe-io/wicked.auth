@@ -22,6 +22,9 @@ export interface OAuth2Request {
 
 export interface TokenRequest extends OAuth2Request {
     grant_type: string,
+    // In special cases, the refresh token grant is rewritten to a password
+    // grant; this flag allows that explicitly.
+    accept_password_grant?: boolean,
     code?: string,
     username?: string,
     password?: string,

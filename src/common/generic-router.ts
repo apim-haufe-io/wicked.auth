@@ -1513,10 +1513,13 @@ export class GenericOAuth2Router {
                         if (err)
                             return failError(500, err, callback);
                         tokenRequest.session_data = tempProfile;
-                        // We will have to rewrite this to a "password" grant, as we cannot change the scope otherwise
+                        // HACK_PASSTHROUGH_REFRESH: We will have to rewrite this to a "password" grant, as we cannot change the scope otherwise
                         tokenRequest.grant_type = 'password';
                         tokenRequest.authenticated_userid = scopeResponse.authenticated_userid;
                         tokenRequest.scope = scopeResponse.authenticated_scope;
+                        // Tell tokenPasswordGrantKong that it's okay to use the password grant even if the API is not
+                        // configured to support it.
+                        tokenRequest.accept_password_grant = true;
 
                         oauth2.token(tokenRequest, (err, accessToken: AccessToken) => {
                             if (err)
