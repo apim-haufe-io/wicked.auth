@@ -10,6 +10,7 @@ export interface OAuth2Request {
     client_secret?: string,
     // Not needed for client_credentials
     authenticated_userid?: string,
+    authenticated_userid_is_verbose?: boolean,
     namespace?: string,
     
     scope?: any,
@@ -117,6 +118,11 @@ export interface LocalIdpConfig {
     disableSignup: boolean,
     trustUsers: boolean
 };
+
+export interface ExternalIdpConfig {
+    validateUserPassUrl: string,
+    allowRefreshUrl: string
+}
 
 export interface OAuth2IdpConfigBase {
     clientId: string,

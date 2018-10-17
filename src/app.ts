@@ -21,8 +21,8 @@ import { GoogleIdP } from './providers/google';
 import { TwitterIdP } from './providers/twitter';
 import { OAuth2IdP } from './providers/oauth2';
 // import { FacebookIdP } from './providers/facebook';
-// import { AdfsIdP } from './providers/adfs';
-// import { SamlIdP } from './providers/saml';
+import { SamlIdP } from './providers/saml';
+import { ExternalIdP } from './providers/external';
 
 import { StatusError } from './common/utils-fail';
 import { SimpleCallback } from './common/types';
@@ -30,7 +30,6 @@ import { WickedAuthServer } from 'wicked-sdk';
 
 import { utils } from './common/utils';
 import { utilsOAuth2 } from './common/utils-oauth2';
-import { SamlIdP } from './providers/saml';
 
 // Use default options, see https://www.npmjs.com/package/session-file-store
 const sessionStoreOptions = {};
@@ -188,6 +187,9 @@ app.initApp = function (authServerConfig: WickedAuthServer, callback: SimpleCall
         switch (authMethod.type) {
             case "local":
                 idp = new LocalIdP(basePath, authMethod.name, authMethod.config, options);
+                break;
+            case "external":
+                idp = new ExternalIdP(basePath, authMethod.name, authMethod.config, options);
                 break;
             case "dummy":
                 idp = new DummyIdP(basePath, authMethod.name, authMethod.config, options);

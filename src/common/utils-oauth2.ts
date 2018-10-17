@@ -1,14 +1,14 @@
 'use strict';
 
-import { OidcProfile, WickedApiScopes, WickedUserInfo, WickedPool, Callback } from "wicked-sdk";
-import { WickedApiScopesCallback, AuthRequest, SubscriptionValidationCallback, ValidatedScopes, TokenRequest, SimpleCallback, AccessTokenCallback, AuthResponse, SubscriptionValidation, OAuth2Request } from "./types";
+import { OidcProfile, WickedApiScopes, WickedUserInfo, WickedPool, Callback, WickedSubscriptionInfo, WickedApi } from "wicked-sdk";
+import { WickedApiScopesCallback, AuthRequest, SubscriptionValidationCallback, ValidatedScopes, TokenRequest, SimpleCallback, AccessTokenCallback, AuthResponse, SubscriptionValidation, OAuth2Request, AccessToken } from "./types";
 
 const async = require('async');
 const { debug, info, warn, error } = require('portal-env').Logger('portal-auth:utils-oauth2');
 import * as wicked from 'wicked-sdk';
 const request = require('request');
 
-import { failMessage, failError, failOAuth, makeError } from './utils-fail';
+import { failMessage, failError, failOAuth, makeError, makeOAuthError } from './utils-fail';
 import { profileStore } from './profile-store';
 
 import { utils } from './utils';
@@ -21,78 +21,68 @@ export class UtilsOAuth2 {
     }
 
     private _apiScopes: { [apiId: string]: WickedApiScopes } = {};
-    public getApiScopes = (apiId: string, callback: WickedApiScopesCallback) => {
+    public getApiScopes = async (apiId: string) => {
         debug(`getApiScopes(${apiId})`);
         const instance = this;
         // Check cache first
         if (this._apiScopes[apiId])
-            return callback(null, this._apiScopes[apiId]);
+            return this._apiScopes[apiId];
         debug('getApiScopes: Not present in cache, fetching.');
-        wicked.getApi(apiId, function (err, apiInfo) {
-            if (err) {
-                debug('getApiScopes: Fetching API scopes errored.');
-                debug(err);
-                return callback(err);
-            }
-            // TBD: Is it good to return an error here?
-            if (!apiInfo || !apiInfo.settings)
-                return callback(new Error(`API ${apiId} does not have settings section`));
-            debug('getApiScopes: Succeeded, storing.');
-            debug('api.settings.scopes: ' + JSON.stringify(apiInfo.settings.scopes));
-            instance._apiScopes[apiId] = apiInfo.settings.scopes || {};
-            return callback(null, instance._apiScopes[apiId]);
-        });
+        const apiInfo = await wicked.getApi(apiId) as WickedApi;
+        if (!apiInfo || !apiInfo.settings)
+            throw new Error(`API ${apiId} does not have settings section`);
+        debug('getApiScopes: Succeeded, storing.');
+        debug('api.settings.scopes: ' + JSON.stringify(apiInfo.settings.scopes));
+        instance._apiScopes[apiId] = apiInfo.settings.scopes || {};
+        return instance._apiScopes[apiId];
     };
 
-    public validateAuthorizeRequest = (authRequest: AuthRequest, callback: SubscriptionValidationCallback) => {
+    public validateAuthorizeRequest = async (authRequest: AuthRequest): Promise<SubscriptionValidation> => {
+        const instance = this;
         debug(`validateAuthorizeRequest(${authRequest})`);
         if (authRequest.response_type !== 'token' &&
             authRequest.response_type !== 'code')
-            return failMessage(400, `Invalid response_type ${authRequest.response_type}`, callback);
+            throw makeError(`Invalid response_type ${authRequest.response_type}`, 400);
         if (!authRequest.client_id)
-            return failMessage(400, 'Invalid or empty client_id.', callback);
+            throw makeError('Invalid or empty client_id.', 400);
         if (!authRequest.redirect_uri)
-            return failMessage(400, 'Invalid or empty redirect_uri', callback);
-        this.validateSubscription(authRequest, function (err, subsValidation: SubscriptionValidation) {
-            if (err)
-                return failMessage(400, err.message, callback);
-            const application = subsValidation.subsInfo.application;
-            if (!application.redirectUri)
-                return failMessage(400, 'The application associated with the given client_id does not have a registered redirect_uri.', callback);
+            throw makeError('Invalid or empty redirect_uri', 400);
+        const subsValidation = await instance.validateSubscription(authRequest);
+        const application = subsValidation.subsInfo.application;
+        if (!application.redirectUri)
+            throw makeError('The application associated with the given client_id does not have a registered redirect_uri.', 400);
 
-            // Verify redirect_uri from application, has to match what is passed in
-            const uri1 = utils.normalizeRedirectUri(authRequest.redirect_uri);
-            const uri2 = utils.normalizeRedirectUri(subsValidation.subsInfo.application.redirectUri);
+        // Verify redirect_uri from application, has to match what is passed in
+        const uri1 = utils.normalizeRedirectUri(authRequest.redirect_uri);
+        const uri2 = utils.normalizeRedirectUri(subsValidation.subsInfo.application.redirectUri);
 
-            if (uri1 !== uri2) {
-                error(`Expected redirect_uri: ${uri2}`);
-                error(`Received redirect_uri: ${uri1}`);
-                return failMessage(400, 'The provided redirect_uri does not match the registered redirect_uri', callback);
-            }
-            // Now we have a redirect_uri; we can now make use of failOAuth
+        if (uri1 !== uri2) {
+            error(`Expected redirect_uri: ${uri2}`);
+            error(`Received redirect_uri: ${uri1}`);
+            throw makeError('The provided redirect_uri does not match the registered redirect_uri', 400);
+        }
 
-            // Check for PKCE for public apps using the authorization code grant
-            if (authRequest.response_type === 'code' &&
-                application.confidential !== true) {
-                if (!authRequest.code_challenge)
-                    return failOAuth(400, 'invalid_request', 'the given client is a public client; it must present a code_challenge (PKCE, RFC7636) to use the authorization code grant.', callback);
-                if (!authRequest.code_challenge_method)
-                    authRequest.code_challenge_method = 'plain'; // Default
-                if (authRequest.code_challenge_method !== 'plain' &&
-                    authRequest.code_challenge_method !== 'S256')
-                    return failOAuth(400, 'invalid_request', 'unsupported code_challenge_method; expected "plain" or "S256".', callback);
-            }
+        // Now we have a redirect_uri; we can now make use of failOAuth
+        // Check for PKCE for public apps using the authorization code grant
+        if (authRequest.response_type === 'code' &&
+            application.confidential !== true) {
+            if (!authRequest.code_challenge)
+                throw makeOAuthError(400, 'invalid_request', 'the given client is a public client; it must present a code_challenge (PKCE, RFC7636) to use the authorization code grant.');
+            if (!authRequest.code_challenge_method)
+                authRequest.code_challenge_method = 'plain'; // Default
+            if (authRequest.code_challenge_method !== 'plain' &&
+                authRequest.code_challenge_method !== 'S256')
+                throw makeOAuthError(400, 'invalid_request', 'unsupported code_challenge_method; expected "plain" or "S256".');
+        }
 
-            // Success
-            return callback(null, subsValidation);
-        });
+        // Success
+        return subsValidation;
     };
 
-    public validateSubscription = (oauthRequest: OAuth2Request, callback: SubscriptionValidationCallback) => {
+    public validateSubscription = async (oauthRequest: OAuth2Request): Promise<SubscriptionValidation> => {
         debug('validateSubscription()');
-        wicked.getSubscriptionByClientId(oauthRequest.client_id, oauthRequest.api_id, (err, subsInfo) => {
-            if (err)
-                return failOAuth(400, 'invalid_request', 'could not validate client_id and API subscription', err, callback);
+        try {
+            const subsInfo = await wicked.getSubscriptionByClientId(oauthRequest.client_id, oauthRequest.api_id) as WickedSubscriptionInfo;
             // Do we have a trusted subscription?
             let trusted = false;
             if (subsInfo.subscription && subsInfo.subscription.trusted) {
@@ -101,7 +91,7 @@ export class UtilsOAuth2 {
                 trusted = true;
             }
             if (!subsInfo.application || !subsInfo.application.id)
-                return failOAuth(500, 'server_error', 'Subscription information does not contain a valid application id', callback);
+                throw makeOAuthError(500, 'server_error', 'Subscription information does not contain a valid application id');
 
             oauthRequest.app_id = subsInfo.application.id;
             oauthRequest.app_name = subsInfo.application.name;
@@ -110,67 +100,64 @@ export class UtilsOAuth2 {
                 trusted: trusted,
             };
 
-            return callback(null, returnValues); // All's good for now
-        });
+            return returnValues; // All's good for now
+        } catch (err) {
+            throw makeOAuthError(400, 'invalid_request', 'could not validate client_id and API subscription', err);
+        }
     };
 
-    public validateApiScopes = (apiId: string, scope: string, subIsTrusted: boolean, callback: Callback<ValidatedScopes>) => {
+    public validateApiScopes = async (apiId: string, scope: string, subIsTrusted: boolean): Promise<ValidatedScopes> => {
         debug(`validateApiScopes(${apiId}, ${scope})`);
 
-        async.parallel({
-            apiScopes: callback => this.getApiScopes(apiId, callback),
-            apiInfo: callback => utils.getApiInfo(apiId, callback),
-        }, (err, results) => {
-            if (err)
-                return failError(500, err, callback);
-            const apiScopes = results.apiScopes as WickedApiScopes;
+        const instance = this;
+        const apiScopes = await instance.getApiScopes(apiId);
+        // const apiInfo = await utils.getApiInfoAsync(apiId);
 
-            let requestScope = scope;
-            if (!requestScope) {
-                debug('validateApiScopes: No scopes requested.');
-                requestScope = '';
-            }
+        let requestScope = scope;
+        if (!requestScope) {
+            debug('validateApiScopes: No scopes requested.');
+            requestScope = '';
+        }
 
-            let scopes = [] as string[];
-            if (requestScope) {
-                if (requestScope.indexOf(' ') > 0)
-                    scopes = requestScope.split(' ');
-                else if (requestScope.indexOf(',') > 0)
-                    scopes = requestScope.split(',');
-                else if (requestScope.indexOf(';') > 0)
-                    scopes = requestScope.split(';')
-                else
-                    scopes = [requestScope];
-                debug(scopes);
-            } else {
-                scopes = [];
+        let scopes = [] as string[];
+        if (requestScope) {
+            if (requestScope.indexOf(' ') > 0)
+                scopes = requestScope.split(' ');
+            else if (requestScope.indexOf(',') > 0)
+                scopes = requestScope.split(',');
+            else if (requestScope.indexOf(';') > 0)
+                scopes = requestScope.split(';')
+            else
+                scopes = [requestScope];
+            debug(scopes);
+        } else {
+            scopes = [];
+        }
+        const validatedScopes = [] as string[];
+        // Pass upstream if we changed the scopes (e.g. for a trusted application)
+        let scopesDiffer = false;
+        if (!subIsTrusted) {
+            debug('validateApiScopes: Non-trusted subscription.');
+            for (let i = 0; i < scopes.length; ++i) {
+                const thisScope = scopes[i];
+                if (!apiScopes[thisScope])
+                    throw makeError(`Invalid or unknown scope "${thisScope}".`, 400);
+                validatedScopes.push(thisScope);
             }
-            const validatedScopes = [] as string[];
-            // Pass upstream if we changed the scopes (e.g. for a trusted application)
-            let scopesDiffer = false;
-            if (!subIsTrusted) {
-                debug('validateApiScopes: Non-trusted subscription.');
-                for (let i = 0; i < scopes.length; ++i) {
-                    const thisScope = scopes[i];
-                    if (!apiScopes[thisScope])
-                        return failMessage(400, `Invalid or unknown scope "${thisScope}".`, callback);
-                    validatedScopes.push(thisScope);
-                }
-            } else {
-                debug('validateApiScopes: Trusted subscription.');
-                // apiScopes is a map of scopes
-                for (let aScope in apiScopes) {
-                    validatedScopes.push(aScope);
-                }
-                scopesDiffer = true;
+        } else {
+            debug('validateApiScopes: Trusted subscription.');
+            // apiScopes is a map of scopes
+            for (let aScope in apiScopes) {
+                validatedScopes.push(aScope);
             }
-            debug(`validated Scopes: ${validatedScopes}`);
+            scopesDiffer = true;
+        }
+        debug(`validated Scopes: ${validatedScopes}`);
 
-            return callback(null, {
-                scopesDiffer: scopesDiffer,
-                validatedScopes: validatedScopes
-            });
-        });
+        return {
+            scopesDiffer: scopesDiffer,
+            validatedScopes: validatedScopes
+        };
     };
 
     public makeTokenRequest(req, apiId: string, authMethodId: string): TokenRequest {
@@ -221,69 +208,73 @@ export class UtilsOAuth2 {
         return tokenRequest;
     };
 
-    public validateTokenRequest = (tokenRequest: TokenRequest, callback: SimpleCallback) => {
+    public validateTokenRequest = async (tokenRequest: TokenRequest) => {
         debug(`validateTokenRequest(${tokenRequest})`);
 
         if (!tokenRequest.grant_type)
-            return failOAuth(400, 'invalid_request', 'grant_type is missing.', callback);
+            throw makeOAuthError(400, 'invalid_request', 'grant_type is missing.');
 
         // Different for different grant_types
         if (tokenRequest.grant_type === 'client_credentials') {
             if (!tokenRequest.client_id)
-                return failOAuth(400, 'invalid_client', 'client_id is missing.', callback);
+                throw makeOAuthError(400, 'invalid_client', 'client_id is missing.');
             if (!tokenRequest.client_secret)
-                return failOAuth(400, 'invalid_client', 'client_secret is missing.', callback);
-            return callback(null);
+                throw makeOAuthError(400, 'invalid_client', 'client_secret is missing.');
+            return;
         } else if (tokenRequest.grant_type === 'authorization_code') {
             if (!tokenRequest.code)
-                return failOAuth(400, 'invalid_request', 'code is missing.', callback);
+                throw makeOAuthError(400, 'invalid_request', 'code is missing.');
             if (!tokenRequest.client_id)
-                return failOAuth(400, 'invalid_client', 'client_id is missing.', callback);
-            if (!tokenRequest.client_secret && !tokenRequest.code_verifier) {
-                return failOAuth(400, 'invalid_client', 'client_secret or code_verifier is missing.', callback);
-            }
+                throw makeOAuthError(400, 'invalid_client', 'client_id is missing.');
+            if (!tokenRequest.client_secret && !tokenRequest.code_verifier)
+                throw makeOAuthError(400, 'invalid_client', 'client_secret or code_verifier is missing.');
         } else if (tokenRequest.grant_type === 'password') {
             if (!tokenRequest.client_id)
-                return failOAuth(400, 'invalid_client', 'client_id is missing.', callback);
+                throw makeOAuthError(400, 'invalid_client', 'client_id is missing.');
             // For confidential clients, the client_secret will also be checked (by the OAuth2 adapter)
             if (!tokenRequest.username)
-                return failOAuth(400, 'invalid_request', 'username is missing.', callback);
+                throw makeOAuthError(400, 'invalid_request', 'username is missing.');
             if (!tokenRequest.username)
-                return failOAuth(400, 'invalid_request', 'password is missing.', callback);
+                throw makeOAuthError(400, 'invalid_request', 'password is missing.');
             // TODO: scopes
         } else if (tokenRequest.grant_type === 'refresh_token') {
             if (!tokenRequest.client_id)
-                return failOAuth(400, 'invalid_client', 'client_id is missing.', callback);
+                throw makeOAuthError(400, 'invalid_client', 'client_id is missing.');
             // For confidential clients, the client_secret will also be checked (by the OAuth2 adapter)
             if (!tokenRequest.refresh_token)
-                return failOAuth(400, 'invalid_request', 'refresh_token is missing.', callback);
+                throw makeOAuthError(400, 'invalid_request', 'refresh_token is missing.');
         } else {
-            return failOAuth(400, 'unsupported_grant_type', `The grant_type '${tokenRequest.grant_type}' is not supported or is unknown.`, callback);
+            throw makeOAuthError(400, 'unsupported_grant_type', `The grant_type '${tokenRequest.grant_type}' is not supported or is unknown.`);
         }
-        return callback(null);
+        return;
     };
 
-    public tokenClientCredentials = (tokenRequest: TokenRequest, callback: AccessTokenCallback) => {
+    public tokenClientCredentials = async (tokenRequest: TokenRequest): Promise<AccessToken> => {
         debug('tokenClientCredentials()');
         const instance = this;
-        this.validateSubscription(tokenRequest, (err, validationResult) => {
-            if (err)
-                return callback(err);
-            instance.validateApiScopes(tokenRequest.api_id, tokenRequest.scope, validationResult.trusted, (err, scopeInfo) => {
-                if (err)
-                    return callback(err);
-                tokenRequest.scope = scopeInfo.validatedScopes;
-                // We can just pass this on to the wicked SDK.
-                oauth2.token(tokenRequest, callback);
-            });
-        });
+        const validationResult = await instance.validateSubscription(tokenRequest);
+        const scopeInfo = await instance.validateApiScopes(tokenRequest.api_id, tokenRequest.scope, validationResult.trusted);
+        tokenRequest.scope = scopeInfo.validatedScopes;
+        // We can just pass this on to the wicked SDK.
+        return await oauth2.tokenAsync(tokenRequest);
     };
 
-    public tokenAuthorizationCode = (tokenRequest: TokenRequest, callback: AccessTokenCallback) => {
+    public tokenAuthorizationCode = async (tokenRequest: TokenRequest): Promise<AccessToken> => {
+        const instance = this;
+        return new Promise<AccessToken>(function (resolve, reject) {
+            instance.tokenAuthorizationCode_(tokenRequest, function (err, accessToken) {
+                err ? reject(err) : resolve(accessToken);
+            })
+        });
+    }
+
+    private tokenAuthorizationCode_ = (tokenRequest: TokenRequest, callback: AccessTokenCallback) => {
         debug('tokenAuthorizationCode()');
         profileStore.retrieve(tokenRequest.code, (err, profile) => {
             if (err)
                 return callback(err);
+            if (!profile)
+                return callback(makeOAuthError(500, 'server_error', 'could not retrieve user profile for given authorization code'));
             tokenRequest.code_challenge = profile.code_challenge;
             tokenRequest.code_challenge_method = profile.code_challenge_method;
             delete profile.code_challenge;

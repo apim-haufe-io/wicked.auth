@@ -4,7 +4,6 @@ const cors = require('cors');
 const { debug, info, warn, error } = require('portal-env').Logger('portal-auth:utils');
 const passwordValidator = require('portal-env').PasswordValidator;
 import * as wicked from 'wicked-sdk';
-const async = require('async');
 const crypto = require('crypto');
 const url = require('url');
 const fs = require('fs');
@@ -15,8 +14,6 @@ const qs = require('querystring');
 import { failMessage, failError, failOAuth, makeError } from './utils-fail';
 import { NameSpec, StringCallback, SimpleCallback, AuthRequest, AuthResponse, AuthSession } from './types';
 import { OidcProfile, WickedApi, WickedPool, Callback, WickedUserShortInfo, WickedError, WickedPasswordStrategy } from 'wicked-sdk';
-
-const ERROR_TIMEOUT = 500; // ms
 
 export const utils = {
 
@@ -55,6 +52,14 @@ export const utils = {
         if (ob instanceof String || typeof ob === "string")
             return ob;
         return JSON.stringify(ob, null, 2);
+    },
+
+    delay: async function (ms) {
+        return new Promise(function (resolve) {
+            setTimeout(() => {
+                resolve();
+            }, ms);
+        });
     },
 
     // https://stackoverflow.com/questions/263965/how-can-i-convert-a-string-to-boolean-in-javascript
@@ -213,38 +218,78 @@ export const utils = {
         });
     },
 
+    getApiInfoAsync: async function (apiId: string) {
+        debug(`getApiInfo(${apiId})`);
+        if (utils._apiInfoMap[apiId] && utils._apiInfoMap[apiId].success)
+            return utils._apiInfoMap[apiId].data;
+        try {
+            const apiInfo = await wicked.getApi(apiId) as WickedApi
+            utils._apiInfoMap[apiId] = {
+                data: apiInfo,
+                success: true
+            };
+            return apiInfo;
+        } catch (err) {
+            utils._apiInfoMap[apiId] = {
+                success: false
+            };
+            throw (err);
+        }
+    },
+
+    getApiRegistrationPoolAsync: async (apiId: string): Promise<string> => {
+        debug(`getApiRegistrationPoolAsync(${apiId})`);
+        const apiInfo = await utils.getApiInfoAsync(apiId);
+        let poolId = apiInfo.registrationPool;
+        if (!poolId)
+            debug(`API ${apiId} does not have a registration pool setting`);
+        // Yes, poolId can be null or undefined here
+        return poolId;
+    },
+
     getApiRegistrationPool: function (apiId: string, callback: StringCallback) {
         debug(`getApiRegistrationPool(${apiId})`);
-        utils.getApiInfo(apiId, (err, apiInfo) => {
-            if (err)
+        (async () => {
+            try {
+                const poolId = await this.getApiRegistrationPoolAsync(apiId);
+                return callback(null, poolId);
+            } catch (err) {
                 return callback(err);
-            let poolId = apiInfo.registrationPool;
-            if (!poolId)
-                debug(`API ${apiId} does not have a registration pool setting`);
-            // Yes, poolId can be null or undefined here
-            return callback(null, poolId);
-        });
+            }
+        })();
     },
 
     _poolInfoMap: {} as { [poolId: string]: { success: boolean, data?: WickedPool } },
 
     getPoolInfo: function (poolId: string, callback: Callback<WickedPool>): void {
-        debug(`getPoolInfo(${poolId})`);
-        if (utils._poolInfoMap[poolId] && utils._poolInfoMap[poolId].success)
-            return callback(null, utils._poolInfoMap[poolId].data);
-        wicked.getRegistrationPool(poolId, (err, poolInfo) => {
-            if (err) {
-                utils._poolInfoMap[poolId] = {
-                    success: false
-                };
+        const instance = this;
+        (async () => {
+            try {
+                const poolInfo = await instance.getPoolInfoAsync(poolId);
+                return callback(null, poolInfo);
+            } catch (err) {
                 return callback(err);
             }
+        })();
+    },
+
+    getPoolInfoAsync: async function (poolId: string): Promise<WickedPool> {
+        debug(`getPoolInfo(${poolId})`);
+        if (utils._poolInfoMap[poolId] && utils._poolInfoMap[poolId].success)
+            return utils._poolInfoMap[poolId].data;
+        try {
+            const poolInfo = await wicked.getRegistrationPool(poolId);
             utils._poolInfoMap[poolId] = {
                 data: poolInfo,
                 success: true
             };
-            return callback(null, poolInfo);
-        });
+            return poolInfo;
+        } catch (err) {
+            utils._poolInfoMap[poolId] = {
+                success: false
+            };
+            throw err;
+        }
     },
 
     getPoolInfoByApi: function (apiId: string, callback: Callback<WickedPool>) {
@@ -255,21 +300,6 @@ export const utils = {
             if (!poolId)
                 return callback(makeError(`API ${apiId} does not have a registration pool`, 500));
             utils.getPoolInfo(poolId, callback);
-        });
-    },
-
-    getApiAndPoolInfo: function (apiId: string, callback: Callback<{ apiInfo: WickedApi, poolInfo: WickedPool }>) {
-        debug(`getApiAndPoolInfo(${apiId})`);
-        async.parallel({
-            apiInfo: callback => utils.getApiInfo(apiId, callback),
-            poolInfo: callback => utils.getPoolInfoByApi(apiId, callback)
-        }, function (err, results) {
-            if (err)
-                return callback(err);
-            return callback(null, {
-                apiInfo: results.apiInfo,
-                poolInfo: results.poolInfo
-            });
         });
     },
 
@@ -403,25 +433,23 @@ export const utils = {
      * with this custom ID in the wicked database, the user will already have
      * an email address, and thus the IdP would not have to ask for one, in
      * case it doesn't provide one (e.g. Twitter).
-     * @param {*} callback Returns (err, shortUserInfo), shortUserInfo may be
-     * null in case the user doesn't exist, otherwise { id, customId, name, email }
      */
-    getUserByCustomId: function (customId: string, callback: Callback<WickedUserShortInfo>): void {
+    getUserByCustomId: async function (customId: string): Promise<WickedUserShortInfo> {
         debug(`getUserByCustomId(${customId})`);
-        wicked.getUserByCustomId(customId, (err, shortInfoList) => {
-            if (err && err.statusCode == 404) {
-                // Not found
-                return callback(null, null);
-            } else if (err) {
-                // Unexpected error
-                return callback(err);
-            }
-
+        try {
+            const shortInfoList = await wicked.getUserByCustomId(customId);
             // Now we should have the user ID here:
             if (!Array.isArray(shortInfoList) || shortInfoList.length <= 0 || !shortInfoList[0].id)
-                return callback(new Error('getUserByCustomId: Get user short info by email did not return a user id'));
-            return callback(null, shortInfoList[0]);
-        });
+                throw new Error('getUserByCustomId: Get user short info by email did not return a user id');
+            return shortInfoList[0];
+        } catch (err) {
+            if (err.statusCode == 404) {
+                // Not found
+                return null;
+            }
+            // Unexpected error
+            throw err;
+        }
     },
 
     /**

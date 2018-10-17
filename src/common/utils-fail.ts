@@ -12,12 +12,34 @@ export class StatusError extends Error {
     }
 }
 
-export function makeError(message: string, status: number): StatusError {
+export function makeError(message: string, status: number): StatusError;
+export function makeError(message: string, status: number, internalError: Error): StatusError;
+export function makeError() {
+    const message = arguments[0];
+    const status = arguments[1]
+    const internalError = arguments[2];
     const err = new StatusError(status, message);
     if (status)
         err.status = status;
     else
         err.status = 500;
+    if (internalError)
+        err.internalError = internalError;
+    return err;
+}
+
+export function makeOAuthError(statusCode: number, oauthError: string, message: string): void;
+export function makeOAuthError(statusCode: number, oauthError: string, message: string, internalError: Error): void;
+export function makeOAuthError() {
+    const statusCode = arguments[0];
+    const oauthError = arguments[1];
+    const message = arguments[2];
+    const internalError = arguments[3];
+
+    const err = new StatusError(statusCode, message);
+    err.oauthError = oauthError;
+    if (internalError)
+        err.internalError = internalError;
     return err;
 }
 

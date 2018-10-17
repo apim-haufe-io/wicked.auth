@@ -154,6 +154,15 @@ export const oauth2 = {
         });
     },
 
+    tokenAsync: function (inputData: TokenRequest): Promise<AccessToken> {
+        const instance = this;
+        return new Promise<AccessToken>(function (resolve, reject) {
+            instance.token(inputData, function (err, accessToken) {
+                err ? reject(err) : resolve(accessToken);
+            })
+        });
+    },
+
     token: function (inputData: TokenRequest, callback: AccessTokenCallback) {
         validateGrantType(inputData, function (err) {
             if (err)

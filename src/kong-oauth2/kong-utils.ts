@@ -51,7 +51,18 @@ function kongAction(method, url, body, expectedStatusCode, callback) {
             //console.error(apiBody);
             return callback(err);
         }
-        callback(null, utils.getJson(apiBody));
+        if (apiResponse.statusCode === 204) {
+            // Don't try to convert "No content" to JSON; that won't work.
+            return callback(null, {});
+        }
+        try {
+            const jsonBody = utils.getJson(apiBody);
+            return callback(null, jsonBody);
+        } catch (err) {
+            error(err);
+            error(apiBody);
+            return callback(err);
+        }
     });
 }
 
