@@ -1,6 +1,6 @@
 'use strict';
 
-import { OidcProfile, WickedApiScopes, WickedSubscriptionInfo, WickedScopeGrant, Callback, WickedUserInfo } from "wicked-sdk";
+import { OidcProfile, WickedApiScopes, WickedSubscriptionInfo, WickedScopeGrant, Callback, WickedUserInfo, WickedApi } from "wicked-sdk";
 
 export interface OAuth2Request {
     api_id: string,
@@ -106,7 +106,7 @@ export interface IdentityProvider {
     logoutHook?: (req, res, next, redirect_uri: string) => boolean,
     endpoints: () => EndpointDefinition[],
     authorizeByUserPass: (user: string, pass: string, callback: Callback<AuthResponse>) => void,
-    checkRefreshToken: (tokenInfo, callback: Callback<CheckRefreshDecision>) => void
+    checkRefreshToken: (tokenInfo, apiInfo: WickedApi, callback: Callback<CheckRefreshDecision>) => void
 };
 
 export interface IdpOptions {

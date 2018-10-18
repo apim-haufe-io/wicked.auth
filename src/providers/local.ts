@@ -2,7 +2,7 @@
 
 import { GenericOAuth2Router } from '../common/generic-router';
 import { AuthRequest, AuthResponse, IdentityProvider, EndpointDefinition, IdpOptions, LocalIdpConfig, CheckRefreshDecision, BooleanCallback } from '../common/types';
-import { OidcProfile, WickedUserInfo, Callback } from 'wicked-sdk';
+import { OidcProfile, WickedUserInfo, Callback, WickedApi } from 'wicked-sdk';
 const { debug, info, warn, error } = require('portal-env').Logger('portal-auth:local');
 import * as wicked from 'wicked-sdk';
 const Router = require('express').Router;
@@ -61,7 +61,7 @@ export class LocalIdP implements IdentityProvider {
         });
     }
 
-    public checkRefreshToken(tokenInfo, callback: Callback<CheckRefreshDecision>) {
+    public checkRefreshToken(tokenInfo, apiInfo: WickedApi, callback: Callback<CheckRefreshDecision>) {
         debug('checkRefreshToken()');
         // Decide whether it's okay to refresh this token or not, e.g.
         // by checking that the user is still valid in your database or such;

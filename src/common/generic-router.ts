@@ -1559,7 +1559,7 @@ export class GenericOAuth2Router {
                     const userId = GenericOAuth2Router.extractUserId(tokenInfo.authenticated_userid);
                     if (!userId)
                         return failOAuth(500, 'server_error', 'could not correctly retrieve authenticated user id from refresh token', callback);
-                    instance.idp.checkRefreshToken(tokenInfo, (err, refreshCheckResult) => {
+                    instance.idp.checkRefreshToken(tokenInfo, apiInfo, (err, refreshCheckResult) => {
                         // TODO: This might be possible to do for all APIs, e.g. check for the previously
                         // created user (in wicked). If not present -> Don't refresh. We can still keep
                         // the callback to the IdP for additional things (I can't imagine what right now though).
@@ -1585,7 +1585,7 @@ export class GenericOAuth2Router {
                     const tempProfile: OidcProfile = {
                         sub: tokenInfo.authenticated_userid
                     };
-                    instance.idp.checkRefreshToken(tokenInfo, function (err, refreshCheckResult) {
+                    instance.idp.checkRefreshToken(tokenInfo, apiInfo, function (err, refreshCheckResult) {
                         if (err)
                             return failOAuth(500, 'server_error', 'checking whether refresh is allowed return an unexpected error', err, callback);
                         if (!refreshCheckResult.allowRefresh)

@@ -2,7 +2,7 @@
 
 import { GenericOAuth2Router } from '../common/generic-router';
 import { IdpOptions, ExpressHandler, EmailMissingHandler, TwitterIdpConfig, IdentityProvider, AuthRequest, EndpointDefinition, CheckRefreshDecision, AuthResponse } from '../common/types';
-import { OidcProfile, Callback } from 'wicked-sdk';
+import { OidcProfile, Callback, WickedApi } from 'wicked-sdk';
 const { debug, info, warn, error } = require('portal-env').Logger('portal-auth:twitter');
 const Router = require('express').Router;
 
@@ -113,7 +113,7 @@ export class TwitterIdP implements IdentityProvider {
         return failOAuth(400, 'unsupported_grant_type', 'Twitter does not support authorizing headless with username and password', callback);
     }
 
-    public checkRefreshToken = (tokenInfo, callback: Callback<CheckRefreshDecision>) => {
+    public checkRefreshToken(tokenInfo, apiInfo: WickedApi, callback: Callback<CheckRefreshDecision>) {
         // Decide whether it's okay to refresh this token or not, e.g.
         // by checking that the user is still valid in your database or such;
         // for 3rd party IdPs, this may be tricky. For Twitter, we will just allow it.

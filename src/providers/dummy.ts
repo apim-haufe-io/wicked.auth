@@ -4,7 +4,7 @@ import { GenericOAuth2Router } from '../common/generic-router';
 import { IdentityProvider, IdpOptions, AuthRequest, EndpointDefinition, CheckRefreshDecision, AuthResponse, DummyIdpConfig } from '../common/types';
 const { debug, info, warn, error } = require('portal-env').Logger('portal-auth:local');
 import * as wicked from 'wicked-sdk';
-import { Callback } from 'wicked-sdk';
+import { Callback, WickedApi } from 'wicked-sdk';
 import { utils } from '../common/utils';
 
 export class DummyIdP implements IdentityProvider {
@@ -71,7 +71,7 @@ export class DummyIdP implements IdentityProvider {
         return callback(null, this.getDummyAuthResponse());
     };
 
-    public checkRefreshToken(tokenInfo, callback: Callback<CheckRefreshDecision>) {
+    public checkRefreshToken(tokenInfo, apiInfo: WickedApi, callback: Callback<CheckRefreshDecision>) {
         debug('checkRefreshToken()');
         // Decide whether it's okay to refresh this token or not, e.g.
         // by checking that the user is still valid in your database or such;

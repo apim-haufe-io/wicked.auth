@@ -11,7 +11,7 @@ const request = require('request');
 
 import { utils } from '../common/utils';
 import { failMessage, failError, failOAuth, makeError } from '../common/utils-fail';
-import { ExternalUserPassRequest, ExternalUserPassResponse, ExternalRefreshResponse } from 'wicked-sdk/dist/interfaces';
+import { ExternalUserPassRequest, ExternalUserPassResponse, ExternalRefreshResponse, WickedApi } from 'wicked-sdk';
 
 export class ExternalIdP implements IdentityProvider {
 
@@ -51,7 +51,6 @@ export class ExternalIdP implements IdentityProvider {
         // loginUser returns an authResponse, so we can use that to verify that the user
         // does not interactively have to change his password.
         try {
-
             const authResponse = await this.loginUser(user, pass);
             return callback(null, authResponse);
         } catch (err) {
@@ -59,10 +58,23 @@ export class ExternalIdP implements IdentityProvider {
         }
     }
 
-    public checkRefreshToken(tokenInfo: TokenInfo, callback: Callback<CheckRefreshDecision>) {
+    public checkRefreshToken(tokenInfo: TokenInfo, apiInfo: WickedApi, callback: Callback<CheckRefreshDecision>) {
         debug('checkRefreshToken()');
         const instance = this;
+
         // Decide whether it's okay to refresh this token or not. Ask the external IdP whether it's okay.
+        // Only do that if it's a passthrough users API; in all other cases it does not make much sense, for the
+        // following reason: the authenticated_userid is a wicked userId, and not the sub from the external IdP,
+        // and thus we can't expect the external IdP to know whether to allow a refresh of this user or not.
+        if (!apiInfo.passthroughUsers) {
+            // Here we just say it's okay.
+            return callback(null, {
+                allowRefresh: true
+            });
+        }
+        
+        // Passthrough users case - the external IdP gets an authenticated user id which it knows (by structure),
+        // and thus it makes sense to ask the IdP whether a refresh is allowed.
         const postBody = {
             authenticated_userid: tokenInfo.authenticated_userid,
             authenticated_scope: tokenInfo.scope
