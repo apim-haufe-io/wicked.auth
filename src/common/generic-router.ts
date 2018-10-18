@@ -1252,10 +1252,19 @@ export class GenericOAuth2Router {
                 throw makeOAuthError(401, 'invalid_request', 'Invalid client secret');
         }
 
+        // Retrieve API information
+        let apiInfo: WickedApi;
+        try {
+            apiInfo = await utils.getApiInfoAsync(tokenRequest.api_id);
+        } catch (err) {
+            error(err);
+            throw makeOAuthError(err.statusCode, 'server_error', 'could not retrieve API information');
+        }
+
         // Now we know whether we have a trusted subscription or not; only allow trusted subscriptions to
         // retrieve a token via the password grant. The only exception is when using passthrough scopes, where
         // the scope is calculated via a lookup to a 3rd party service anyway.
-        if (!trustedSubscription)
+        if (!trustedSubscription && !apiInfo.passthroughScopeUrl)
             throw makeOAuthError(400, 'invalid_request', 'only trusted application subscriptions can retrieve tokens via the password grant.');
 
         const validatedScopes = await utilsOAuth2.validateApiScopes(tokenRequest.api_id, tokenRequest.scope, trustedSubscription);
@@ -1298,13 +1307,6 @@ export class GenericOAuth2Router {
         // the pool requires a namespace, the request will still succeed even if there
         // aren't any registrations, but the list of associated namespaces is empty.
         // The created authenticated_userid is also differing depending on the case.
-        let apiInfo;
-        try {
-            apiInfo = await utils.getApiInfoAsync(tokenRequest.api_id);
-        } catch (err) {
-            error(err);
-            throw makeOAuthError(err.statusCode, 'server_error', 'could not retrieve API information');
-        }
 
         // We must do the switch-case here again regarding passthrough users and passthrough scopes...
         // Check for passthrough scopes and users
