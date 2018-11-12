@@ -129,9 +129,7 @@ export class LocalIdP implements IdentityProvider {
             if (err) {
                 debug(err);
                 // Delay redisplay of login page a little
-                setTimeout(function () {
-                    instance.renderLogin(req, res, next, 'Username or password invalid.', username);
-                }, 500);
+                setTimeout(() => instance.renderLogin(req, res, next, 'Username or password invalid.', username), 500);
                 return;
             }
 
@@ -164,7 +162,7 @@ export class LocalIdP implements IdentityProvider {
         const instance = this;
 
         if (!csrfToken || expectedCsrfToken !== csrfToken) {
-            setTimeout(this.renderLogin, 500, req, res, next, 'CSRF validation failed, please try again.');
+            setTimeout(() => instance.renderLogin(req, res, next,'CSRF validation failed, please try again.'),  500);
             return;
         }
 
@@ -231,7 +229,7 @@ export class LocalIdP implements IdentityProvider {
         const instance = this;
 
         if (!csrfToken || expectedCsrfToken !== csrfToken)
-            return setTimeout(this.renderSignup, 500, req, res, next, 'CSRF validation failed, please try again.');
+            return setTimeout(() => instance.renderSignup(req, res, next, 'CSRF validation failed, please try again.'), 500);
 
         const email = body.email;
         const password = body.password;
