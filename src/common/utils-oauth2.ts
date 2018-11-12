@@ -47,7 +47,15 @@ export class UtilsOAuth2 {
             throw makeError('Invalid or empty client_id.', 400);
         if (!authRequest.redirect_uri)
             throw makeError('Invalid or empty redirect_uri', 400);
-        const subsValidation = await instance.validateSubscription(authRequest);
+        let subsValidation: SubscriptionValidation;
+        try {
+            subsValidation = await instance.validateSubscription(authRequest);
+        } catch (err) {
+            // Otherwise this would return a JSON instead of a HTML error page.
+            // See https://github.com/Haufe-Lexware/wicked.haufe.io/issues/137
+            delete err.oauthError;
+            throw err;
+        }
         const application = subsValidation.subsInfo.application;
         if (!application.redirectUri)
             throw makeError('The application associated with the given client_id does not have a registered redirect_uri.', 400);
