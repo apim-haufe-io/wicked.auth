@@ -35,7 +35,9 @@ export interface TokenRequest extends OAuth2Request {
     // temporarily while the client is preparing the actual token request.
     code_challenge?: string,
     code_challenge_method?: string,
-    code_verifier?: string
+    code_verifier?: string,
+    // In case there are restrictions on scope
+    scope_differs?: boolean    
 }
 
 export interface AuthRequest extends OAuth2Request {
@@ -47,7 +49,7 @@ export interface AuthRequest extends OAuth2Request {
     code_challenge?: string,
     code_challenge_method?: string,
     trusted?: boolean,
-    scopesDiffer?: boolean,
+    scope_differs?: boolean,
     plain?: boolean,
     validNamespaces?: string[],
     // Used in the SAML case
@@ -257,30 +259,19 @@ export interface NumberCallback {
 export interface OidcProfileEx extends OidcProfile {
     // extension for temporary storing PKCE challenge inside profile
     code_challenge?: string,
-    code_challenge_method?: string
+    code_challenge_method?: string,
+    // Remember whether the scope differed when making it
+    scope_differs?: boolean
 }
 
 export interface WickedApiScopesCallback {
     (err, apiScopes?: WickedApiScopes): void
 };
 
-export interface SubscriptionValidation {
-    subsInfo: WickedSubscriptionInfo,
-    trusted: boolean
-};
-
-export interface SubscriptionValidationCallback {
-    (err, subscriptionValidation?: SubscriptionValidation): void
-};
-
 export interface ValidatedScopes {
-    scopesDiffer: boolean,
+    scopeDiffers: boolean,
     validatedScopes: string[]
 };
-
-// export interface ValidatedScopesCallback {
-//     (err, validatedScopes?: ValidatedScopes): void
-// };
 
 export interface StringCallback {
     (err, s?: string): void

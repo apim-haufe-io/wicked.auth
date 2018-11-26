@@ -167,15 +167,26 @@ export const oauth2 = {
         validateGrantType(inputData, function (err) {
             if (err)
                 return callback(err);
+            function appendScopeIfNeeded(err, accessToken) {
+                if (err)
+                    return callback(err);
+                if (inputData.scope_differs) {
+                    if (!inputData.scope)
+                        accessToken.scope = '';
+                    else
+                        accessToken.scope = inputData.scope.join(' ');
+                }
+                return callback(null, accessToken);
+            }
             switch (inputData.grant_type) {
                 case 'client_credentials':
-                    return tokenClientCredentials(inputData, callback);
+                    return tokenClientCredentials(inputData, appendScopeIfNeeded);
                 case 'authorization_code':
-                    return tokenAuthorizationCode(inputData, callback);
+                    return tokenAuthorizationCode(inputData, appendScopeIfNeeded);
                 case 'refresh_token':
-                    return tokenRefreshToken(inputData, callback);
+                    return tokenRefreshToken(inputData, appendScopeIfNeeded);
                 case 'password':
-                    return tokenPasswordGrant(inputData, callback);
+                    return tokenPasswordGrant(inputData, appendScopeIfNeeded);
             }
             return failOAuth(400, 'invalid_request', 'unknown error or grant_type invalid', callback);
         });

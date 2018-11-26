@@ -17,7 +17,7 @@ import { utils } from './utils';
 import { kongUtils } from '../kong-oauth2/kong-utils';
 import { utilsOAuth2 } from './utils-oauth2';
 import { failMessage, failError, failOAuth, makeError, failJson, makeOAuthError } from './utils-fail';
-import { OidcProfile, WickedApiScopes, WickedGrant, WickedUserInfo, WickedUserCreateInfo, WickedScopeGrant, WickedNamespace, WickedCollection, WickedRegistration, PassthroughScopeResponse, Callback, PassthroughScopeRequest, WickedApi } from 'wicked-sdk';
+import { OidcProfile, WickedApiScopes, WickedGrant, WickedUserInfo, WickedUserCreateInfo, WickedScopeGrant, WickedNamespace, WickedCollection, WickedRegistration, PassthroughScopeResponse, Callback, PassthroughScopeRequest, WickedApi, WickedSubscriptionInfo } from 'wicked-sdk';
 import { GrantManager } from './grant-manager';
 
 const ERROR_TIMEOUT = 500; // ms
@@ -441,19 +441,19 @@ export class GenericOAuth2Router {
 
             // Validate parameters first now (TODO: This is pbly feasible centrally,
             // it will be the same for all Auth Methods).
-            let validationResult;
+            let subscriptionInfo: WickedSubscriptionInfo;
             try {
-                validationResult = await utilsOAuth2.validateAuthorizeRequest(authRequest);
+                subscriptionInfo = await utilsOAuth2.validateAuthorizeRequest(authRequest);
             } catch (err) {
                 return next(err);
             }
 
             // Is it a trusted application?
-            authRequest.trusted = validationResult.trusted;
+            authRequest.trusted = subscriptionInfo.subscription.trusted;
 
             let scopeValidationResult;
             try {
-                scopeValidationResult = await utilsOAuth2.validateApiScopes(authRequest.api_id, authRequest.scope, authRequest.trusted);
+                scopeValidationResult = await utilsOAuth2.validateApiScopes(authRequest.api_id, authRequest.scope, subscriptionInfo);
             } catch (err) {
                 return next(err);
             }
@@ -465,7 +465,7 @@ export class GenericOAuth2Router {
             // on.
             authRequest.scope = scopeValidationResult.validatedScopes;
             // Did we add/change the scopes passed in?
-            authRequest.scopesDiffer = scopeValidationResult.scopesDiffer;
+            authRequest.scope_differs = scopeValidationResult.scopeDiffers;
 
             let isLoggedIn = utils.isLoggedIn(req, instance.authMethodId);
             // Borrowed from OpenID Connect, check for prompt request for implicit grant
@@ -1194,12 +1194,13 @@ export class GenericOAuth2Router {
         const userProfile = authResponse.profile;
         debug('/authorize/login: Calling authorization end point.');
         debug(userProfile);
+        const scope = GenericOAuth2Router.mergeUserGroupScope(authRequest.scope, authResponse.groups);
         oauth2.authorize({
             response_type: authRequest.response_type,
             authenticated_userid: this.makeAuthenticatedUserId(authRequest, authResponse),
             api_id: authRequest.api_id,
             client_id: authRequest.client_id,
-            scope: GenericOAuth2Router.mergeUserGroupScope(authRequest.scope, authResponse.groups),
+            scope: scope,
             auth_method: req.app.get('server_name') + ':' + this.authMethodId,
         }, function (err, redirectUri) {
             debug('/authorize/login: Authorization end point returned.');
@@ -1213,12 +1214,18 @@ export class GenericOAuth2Router {
             // null, but that is okay.
             userProfile.code_challenge = authRequest.code_challenge;
             userProfile.code_challenge_method = authRequest.code_challenge_method;
+            // This is also a small hack to remember whether we need to send the scopes with the
+            // access token response (because the scope has changed to what was requested).
+            userProfile.scope_differs = authRequest.scope_differs;
 
             // For this redirect_uri, which can contain either a code or an access token,
             // associate the profile (userInfo).
             profileStore.registerTokenOrCode(redirectUri, authRequest.api_id, userProfile, function (err) {
                 if (err)
                     return failError(500, err, next);
+                // IMPLICIT GRANT ONLY
+                if (authRequest.response_type == 'token' && authRequest.scope_differs)
+                    uri += '&scope=' + qs.escape(scope.join(' '));
                 if (authRequest.state)
                     uri += '&state=' + qs.escape(authRequest.state);
                 if (authRequest.namespace)
@@ -1241,14 +1248,14 @@ export class GenericOAuth2Router {
         debug('tokenPasswordGrant()');
         const instance = this;
         // Let's validate the subscription first...
-        const validationResult = await utilsOAuth2.validateSubscription(tokenRequest);
+        const subscriptionInfo = await utilsOAuth2.validateSubscription(tokenRequest);
 
-        const trustedSubscription = validationResult.trusted;
-        if (validationResult.subsInfo.application.confidential) {
+        const trustedSubscription = subscriptionInfo.subscription.trusted;
+        if (subscriptionInfo.application.confidential) {
             // Also check client_secret here
             if (!tokenRequest.client_secret)
                 throw makeOAuthError(401, 'invalid_request', 'A confidential application must also pass its client_secret');
-            if (validationResult.subsInfo.subscription.clientSecret !== tokenRequest.client_secret)
+            if (subscriptionInfo.subscription.clientSecret !== tokenRequest.client_secret)
                 throw makeOAuthError(401, 'invalid_request', 'Invalid client secret');
         }
 
@@ -1267,9 +1274,10 @@ export class GenericOAuth2Router {
         if (!trustedSubscription && !apiInfo.passthroughScopeUrl)
             throw makeOAuthError(400, 'invalid_request', 'only trusted application subscriptions can retrieve tokens via the password grant.');
 
-        const validatedScopes = await utilsOAuth2.validateApiScopes(tokenRequest.api_id, tokenRequest.scope, trustedSubscription);
+        const validatedScopes = await utilsOAuth2.validateApiScopes(tokenRequest.api_id, tokenRequest.scope, subscriptionInfo);
         // Update the scopes
         tokenRequest.scope = validatedScopes.validatedScopes;
+        tokenRequest.scope_differs = validatedScopes.scopeDiffers;
 
         let authResponse: AuthResponse = null;
         try {

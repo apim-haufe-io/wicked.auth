@@ -1,7 +1,7 @@
 'use strict';
 
-import { OidcProfile, WickedApiScopes, WickedUserInfo, WickedPool, Callback, WickedSubscriptionInfo, WickedApi } from "wicked-sdk";
-import { WickedApiScopesCallback, AuthRequest, SubscriptionValidationCallback, ValidatedScopes, TokenRequest, SimpleCallback, AccessTokenCallback, AuthResponse, SubscriptionValidation, OAuth2Request, AccessToken } from "./types";
+import { OidcProfile, WickedApiScopes, WickedUserInfo, WickedPool, WickedSubscriptionInfo, WickedApi } from "wicked-sdk";
+import { AuthRequest, ValidatedScopes, TokenRequest, AccessTokenCallback, AuthResponse, OAuth2Request, AccessToken } from "./types";
 
 const async = require('async');
 const { debug, info, warn, error } = require('portal-env').Logger('portal-auth:utils-oauth2');
@@ -13,6 +13,7 @@ import { profileStore } from './profile-store';
 
 import { utils } from './utils';
 import { oauth2 } from '../kong-oauth2/oauth2';
+import { WickedSubscriptionScopeModeType } from "wicked-sdk/dist/interfaces";
 
 export class UtilsOAuth2 {
 
@@ -37,7 +38,7 @@ export class UtilsOAuth2 {
         return instance._apiScopes[apiId];
     };
 
-    public validateAuthorizeRequest = async (authRequest: AuthRequest): Promise<SubscriptionValidation> => {
+    public validateAuthorizeRequest = async (authRequest: AuthRequest): Promise<WickedSubscriptionInfo> => {
         const instance = this;
         debug(`validateAuthorizeRequest(${authRequest})`);
         if (authRequest.response_type !== 'token' &&
@@ -47,22 +48,22 @@ export class UtilsOAuth2 {
             throw makeError('Invalid or empty client_id.', 400);
         if (!authRequest.redirect_uri)
             throw makeError('Invalid or empty redirect_uri', 400);
-        let subsValidation: SubscriptionValidation;
+        let subscriptionInfo: WickedSubscriptionInfo;
         try {
-            subsValidation = await instance.validateSubscription(authRequest);
+            subscriptionInfo = await instance.validateSubscription(authRequest);
         } catch (err) {
             // Otherwise this would return a JSON instead of a HTML error page.
             // See https://github.com/Haufe-Lexware/wicked.haufe.io/issues/137
             delete err.oauthError;
             throw err;
         }
-        const application = subsValidation.subsInfo.application;
+        const application = subscriptionInfo.application;
         if (!application.redirectUri)
             throw makeError('The application associated with the given client_id does not have a registered redirect_uri.', 400);
 
         // Verify redirect_uri from application, has to match what is passed in
         const uri1 = utils.normalizeRedirectUri(authRequest.redirect_uri);
-        const uri2 = utils.normalizeRedirectUri(subsValidation.subsInfo.application.redirectUri);
+        const uri2 = utils.normalizeRedirectUri(subscriptionInfo.application.redirectUri);
 
         if (uri1 !== uri2) {
             error(`Expected redirect_uri: ${uri2}`);
@@ -84,10 +85,10 @@ export class UtilsOAuth2 {
         }
 
         // Success
-        return subsValidation;
+        return subscriptionInfo;
     };
 
-    public validateSubscription = async (oauthRequest: OAuth2Request): Promise<SubscriptionValidation> => {
+    public validateSubscription = async (oauthRequest: OAuth2Request): Promise<WickedSubscriptionInfo> => {
         debug('validateSubscription()');
         try {
             const subsInfo = await wicked.getSubscriptionByClientId(oauthRequest.client_id, oauthRequest.api_id) as WickedSubscriptionInfo;
@@ -100,24 +101,23 @@ export class UtilsOAuth2 {
             }
             if (!subsInfo.application || !subsInfo.application.id)
                 throw makeOAuthError(500, 'server_error', 'Subscription information does not contain a valid application id');
+            subsInfo.subscription.trusted = trusted;
 
             oauthRequest.app_id = subsInfo.application.id;
             oauthRequest.app_name = subsInfo.application.name;
-            const returnValues: SubscriptionValidation = {
-                subsInfo: subsInfo,
-                trusted: trusted,
-            };
 
-            return returnValues; // All's good for now
+            return subsInfo;
         } catch (err) {
             throw makeOAuthError(400, 'invalid_request', 'could not validate client_id and API subscription', err);
         }
     };
 
-    public validateApiScopes = async (apiId: string, scope: string, subIsTrusted: boolean): Promise<ValidatedScopes> => {
+    public validateApiScopes = async (apiId: string, scope: string, subscriptionInfo: WickedSubscriptionInfo): Promise<ValidatedScopes> => {
         debug(`validateApiScopes(${apiId}, ${scope})`);
 
         const instance = this;
+
+        const subIsTrusted = subscriptionInfo.subscription.trusted;
         const apiScopes = await instance.getApiScopes(apiId);
         // const apiInfo = await utils.getApiInfoAsync(apiId);
 
@@ -143,27 +143,54 @@ export class UtilsOAuth2 {
         }
         const validatedScopes = [] as string[];
         // Pass upstream if we changed the scopes (e.g. for a trusted application)
-        let scopesDiffer = false;
-        if (!subIsTrusted) {
-            debug('validateApiScopes: Non-trusted subscription.');
-            for (let i = 0; i < scopes.length; ++i) {
-                const thisScope = scopes[i];
-                if (!apiScopes[thisScope])
-                    throw makeError(`Invalid or unknown scope "${thisScope}".`, 400);
-                validatedScopes.push(thisScope);
-            }
-        } else {
-            debug('validateApiScopes: Trusted subscription.');
+        let scopeDiffers = false;
+        debug('validateApiScopes: Trusted subscription.');
+        // No scopes requested? Default to all scopes.
+        if (subIsTrusted && scopes.length === 0) {
             // apiScopes is a map of scopes
             for (let aScope in apiScopes) {
                 validatedScopes.push(aScope);
             }
-            scopesDiffer = true;
+            scopeDiffers = true;
+        } else {
+            debug('validateApiScopes: Non-trusted subscription, or scope passed in.');
+
+            const validScopes = [];
+            for (let i = 0; i < scopes.length; ++i) {
+                const thisScope = scopes[i];
+                if (!apiScopes[thisScope])
+                    throw makeError(`Invalid or unknown scope "${thisScope}".`, 400);
+                validScopes.push(thisScope);
+            }
+
+            // Now check for allowed scopes
+            const allowedScopesMode = subscriptionInfo.subscription.allowedScopesMode;
+            debug(`Allowed scopes mode: ${allowedScopesMode}, allowed scopes: ${subscriptionInfo.subscription.allowedScopes.toString()}`);
+            let allowedScopes: any = {};
+            if (allowedScopesMode === WickedSubscriptionScopeModeType.All)
+                allowedScopes = apiScopes;
+            else if (subscriptionInfo.subscription.allowedScopesMode === WickedSubscriptionScopeModeType.None)
+                allowedScopes = {};
+            else if (subscriptionInfo.subscription.allowedScopesMode === WickedSubscriptionScopeModeType.Select)
+                subscriptionInfo.subscription.allowedScopes.forEach(s => allowedScopes[s] = s);
+
+            // Above we checked whether the scopes which were requested are part of the API definition.
+            // Here we check whether there is information on the subscription whether a specific scope is allowed
+            // for a specific application/subscription. The auth server will not *fail* if there are non-allowed
+            // scopes, but rather just strip them off, and return a reduced scope.
+            for (let i = 0; i < validScopes.length; ++i) {
+                const thisScope = scopes[i];
+                if (!allowedScopes[thisScope]) {
+                    debug(`Filtering out non-allowed scope ${thisScope}`);
+                    scopeDiffers = true;
+                } else
+                    validatedScopes.push(thisScope);
+            }
         }
         debug(`validated Scopes: ${validatedScopes}`);
 
         return {
-            scopesDiffer: scopesDiffer,
+            scopeDiffers: scopeDiffers,
             validatedScopes: validatedScopes
         };
     };
@@ -260,9 +287,10 @@ export class UtilsOAuth2 {
     public tokenClientCredentials = async (tokenRequest: TokenRequest): Promise<AccessToken> => {
         debug('tokenClientCredentials()');
         const instance = this;
-        const validationResult = await instance.validateSubscription(tokenRequest);
-        const scopeInfo = await instance.validateApiScopes(tokenRequest.api_id, tokenRequest.scope, validationResult.trusted);
+        const subscriptionInfo = await instance.validateSubscription(tokenRequest);
+        const scopeInfo = await instance.validateApiScopes(tokenRequest.api_id, tokenRequest.scope, subscriptionInfo);
         tokenRequest.scope = scopeInfo.validatedScopes;
+        tokenRequest.scope_differs = scopeInfo.scopeDiffers;
         // We can just pass this on to the wicked SDK.
         return await oauth2.tokenAsync(tokenRequest);
     };
@@ -285,9 +313,10 @@ export class UtilsOAuth2 {
                 return callback(makeOAuthError(500, 'server_error', 'could not retrieve user profile for given authorization code'));
             tokenRequest.code_challenge = profile.code_challenge;
             tokenRequest.code_challenge_method = profile.code_challenge_method;
+            tokenRequest.scope_differs = profile.scope_differs;
             delete profile.code_challenge;
             delete profile.code_challenge_method;
-            // We can just pass this on to the wicked SDK, and the register the token.
+            // We can just pass this on to the wicked SDK, and then register the token.
             oauth2.token(tokenRequest, (err, accessToken) => {
                 if (err)
                     return callback(err);
