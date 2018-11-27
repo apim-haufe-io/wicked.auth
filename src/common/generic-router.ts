@@ -17,7 +17,7 @@ import { utils } from './utils';
 import { kongUtils } from '../kong-oauth2/kong-utils';
 import { utilsOAuth2 } from './utils-oauth2';
 import { failMessage, failError, failOAuth, makeError, failJson, makeOAuthError } from './utils-fail';
-import { OidcProfile, WickedApiScopes, WickedGrant, WickedUserInfo, WickedUserCreateInfo, WickedScopeGrant, WickedNamespace, WickedCollection, WickedRegistration, PassthroughScopeResponse, Callback, PassthroughScopeRequest, WickedApi, WickedSubscriptionInfo } from 'wicked-sdk';
+import { OidcProfile, WickedApiScopes, WickedGrant, WickedUserInfo, WickedUserCreateInfo, WickedScopeGrant, WickedNamespace, WickedCollection, WickedRegistration, PassthroughScopeResponse, Callback, PassthroughScopeRequest, WickedApi, WickedSubscriptionInfo, WickedUserShortInfo } from 'wicked-sdk';
 import { GrantManager } from './grant-manager';
 
 const ERROR_TIMEOUT = 500; // ms
@@ -1400,18 +1400,6 @@ export class GenericOAuth2Router {
         }
     }
 
-    private checkUserFromAuthResponse(authResponse: AuthResponse, apiId: string, callback: Callback<AuthResponse>): void {
-        const instance = this;
-        (async () => {
-            try {
-                const result = await instance.checkUserFromAuthResponseAsync(authResponse, apiId);
-                return callback(null, result);
-            } catch (err) {
-                return callback(err);
-            }
-        })();
-    }
-
     private checkUserFromAuthResponseAsync = async (authResponse: AuthResponse, apiId: string): Promise<AuthResponse> => {
         debug(`checkUserFromAuthResponse(..., ${apiId})`);
         const instance = this;
@@ -1456,6 +1444,7 @@ export class GenericOAuth2Router {
                 await instance.createUserFromDefaultProfile(authResponse);
                 return loadWickedUser(authResponse.userId);
             } else {
+                await instance.checkDefaultGroups(shortInfo, authResponse);
                 return loadWickedUser(shortInfo.id);
             }
         } else {
@@ -1506,6 +1495,36 @@ export class GenericOAuth2Router {
             if (err.status === 409 || err.statusCode === 409)
                 throw makeError(`A user with the email address "${userCreateInfo.email}" already exists in the system. Please log in using the existing user's identity.`, 409);
             throw err;
+        }
+    }
+
+    private checkDefaultGroups = async (shortInfo: WickedUserShortInfo, authResponse: AuthResponse): Promise<any> => {
+        debug(`checkDefaultGroups()`);
+        if (!authResponse.defaultGroups)
+            return null;
+        try {
+            const userInfo = await wicked.getUser(shortInfo.id);
+            if (!userInfo.groups)
+                userInfo.groups = [];
+            // Compare groups and default groups
+            let needsUpdate = false;
+            for (let i = 0; i < authResponse.defaultGroups.length; ++i) {
+                const defGroup = authResponse.defaultGroups[i];
+                if (!userInfo.groups.find(g => g == defGroup)) {
+                    userInfo.groups.push(defGroup);
+                    needsUpdate = true;
+                }
+            }
+            if (needsUpdate) {
+                debug(`checkDefaultGroups(): Updated groups to ${userInfo.groups.join(', ')}`);
+                await wicked.patchUser(shortInfo.id, userInfo);
+            }
+            return null;
+        } catch (err) {
+            // Just log the error; this is not good, but should not prevent logging in.
+            error(`checkDefaultGroups(): Checking default groups failed for user with id ${shortInfo.id} (email ${shortInfo.email}).`);
+            error(err);
+            return null;
         }
     }
 
