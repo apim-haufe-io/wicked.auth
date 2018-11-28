@@ -46,8 +46,6 @@ export class UtilsOAuth2 {
             throw makeError(`Invalid response_type ${authRequest.response_type}`, 400);
         if (!authRequest.client_id)
             throw makeError('Invalid or empty client_id.', 400);
-        if (!authRequest.redirect_uri)
-            throw makeError('Invalid or empty redirect_uri', 400);
         let subscriptionInfo: WickedSubscriptionInfo;
         try {
             subscriptionInfo = await instance.validateSubscription(authRequest);
@@ -61,14 +59,19 @@ export class UtilsOAuth2 {
         if (!application.redirectUri)
             throw makeError('The application associated with the given client_id does not have a registered redirect_uri.', 400);
 
-        // Verify redirect_uri from application, has to match what is passed in
-        const uri1 = utils.normalizeRedirectUri(authRequest.redirect_uri);
-        const uri2 = utils.normalizeRedirectUri(subscriptionInfo.application.redirectUri);
+        if (authRequest.redirect_uri) {
+            // Verify redirect_uri from application, has to match what is passed in
+            const uri1 = utils.normalizeRedirectUri(authRequest.redirect_uri);
+            const uri2 = utils.normalizeRedirectUri(subscriptionInfo.application.redirectUri);
 
-        if (uri1 !== uri2) {
-            error(`Expected redirect_uri: ${uri2}`);
-            error(`Received redirect_uri: ${uri1}`);
-            throw makeError('The provided redirect_uri does not match the registered redirect_uri', 400);
+            if (uri1 !== uri2) {
+                error(`Expected redirect_uri: ${uri2}`);
+                error(`Received redirect_uri: ${uri1}`);
+                throw makeError('The provided redirect_uri does not match the registered redirect_uri', 400);
+            }
+        } else {
+            // https://tools.ietf.org/html/rfc6749#section-4.1.1
+            authRequest.redirect_uri = subscriptionInfo.application.redirectUri;
         }
 
         // Now we have a redirect_uri; we can now make use of failOAuth
