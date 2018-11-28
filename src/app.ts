@@ -8,6 +8,7 @@ const cookieParser = require('cookie-parser');
 const path = require('path');
 const logger = require('morgan');
 import * as wicked from 'wicked-sdk';
+import * as nocache from 'nocache';
 const passport = require('passport');
 
 const session = require('express-session');
@@ -222,9 +223,9 @@ app.initApp = function (authServerConfig: WickedAuthServer, callback: SimpleCall
         }
     }
 
-    app.get(basePath + '/profile', utilsOAuth2.getProfile);
+    app.get(basePath + '/profile', nocache(), utilsOAuth2.getProfile);
 
-    app.get(basePath + '/logout', function (req, res, next) {
+    app.get(basePath + '/logout', nocache(), function (req, res, next) {
         debug(basePath + '/logout');
 
         const redirect_uri = req.query && req.query.redirect_uri ? req.query.redirect_uri : null;
@@ -263,7 +264,7 @@ app.initApp = function (authServerConfig: WickedAuthServer, callback: SimpleCall
         });
     });
 
-    app.get(basePath + '/failure', function (req, res, next) {
+    app.get(basePath + '/failure', nocache(), function (req, res, next) {
         debug(basePath + '/failure');
 
         let redirectUri = null;

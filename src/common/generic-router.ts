@@ -6,6 +6,7 @@ import { profileStore } from './profile-store'
 const { debug, info, warn, error } = require('portal-env').Logger('portal-auth:generic-router');
 import * as wicked from 'wicked-sdk';
 import * as request from 'request';
+import * as nocache from 'nocache';
 
 import { oauth2 } from '../kong-oauth2/oauth2';
 import { tokens } from '../kong-oauth2/tokens';
@@ -409,6 +410,8 @@ export class GenericOAuth2Router {
         debug(`initOAuthRouter(${this.authMethodId})`);
 
         const instance = this;
+
+        this.oauthRouter.use(nocache());
 
         // OAuth2 end point Authorize
         this.oauthRouter.get('/api/:apiId/authorize', /*csrfProtection,*/ async function (req, res, next) {
