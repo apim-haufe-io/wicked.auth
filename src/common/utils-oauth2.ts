@@ -313,7 +313,7 @@ export class UtilsOAuth2 {
             if (err)
                 return callback(err);
             if (!profile)
-                return callback(makeOAuthError(500, 'server_error', 'could not retrieve user profile for given authorization code'));
+                return callback(makeOAuthError(401, 'invalid_grant', 'invalid authorization code, could not retrieve information on code'));
             tokenRequest.code_challenge = profile.code_challenge;
             tokenRequest.code_challenge_method = profile.code_challenge_method;
             tokenRequest.scope_differs = profile.scope_differs;
