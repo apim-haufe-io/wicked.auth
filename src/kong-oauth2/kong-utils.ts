@@ -100,8 +100,16 @@ export const kongUtils = {
         kongUtils.kongGet('services/' + apiId + '/plugins?name=oauth2', callback);
     },
 
-    lookupApiFromKongCredential(kongCredentialId: string, callback: Callback<WickedApi>): void {
-        debug(`lookupApiFromKongCredential(${kongCredentialId})`);
+    lookupApiAndApplicationFromKongCredentialAsync: async function (kongCredentialId: string): Promise<{ apiId: string, applicationId: string}> {
+        return new Promise<{ apiId: string, applicationId: string }>(function (resolve, reject) {
+            kongUtils.lookupApiAndApplicationFromKongCredential(kongCredentialId, function (err, data) {
+                err ? reject(err) : resolve(data);
+            });
+        })
+    },
+
+    lookupApiAndApplicationFromKongCredential(kongCredentialId: string, callback: Callback<{ apiId: string, applicationId: string }>): void {
+        debug(`lookupApiAndApplicationFromKongCredential(${kongCredentialId})`);
         kongUtils.kongGet(`oauth2?id=${kongCredentialId}`, function (err, kongCredentials: KongCollection<KongPluginOAuth2>) {
             if (err)
                 return callback(err);
@@ -124,8 +132,29 @@ export const kongUtils = {
                     return callback(makeError(`Kong consumer with ID ${consumerId} has an invalid username property "${consumerName}".`, 500))
                 // "<application id>$<api id>"
                 const apiId = consumerName.substring(dollarPos + 1);
-                return utils.getApiInfo(apiId, callback);
+                const applicationId = consumerName.substring(0, dollarPos);
+                return callback(null, {
+                    apiId,
+                    applicationId
+                });
             });
+        });
+    },
+
+    lookupApiFromKongCredentialAsync: async function (kongCredentialId: string): Promise<WickedApi> {
+        return new Promise<WickedApi>(function (resolve, reject) {
+            kongUtils.lookupApiFromKongCredential(kongCredentialId, function (err, data) {
+                err ? reject(err) : resolve(data);
+            });
+        })
+    },
+
+    lookupApiFromKongCredential(kongCredentialId: string, callback: Callback<WickedApi>): void {
+        debug(`lookupApiFromKongCredential(${kongCredentialId})`);
+        kongUtils.lookupApiAndApplicationFromKongCredential(kongCredentialId, function (err, { apiId, applicationId }) {
+            if (err)
+                return callback(err);
+            return utils.getApiInfo(apiId, callback);
         });
     }
 };

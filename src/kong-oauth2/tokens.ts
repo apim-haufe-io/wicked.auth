@@ -12,9 +12,25 @@ import { kongUtils }  from './kong-utils';
 import { failOAuth, failJson } from '../common/utils-fail';
 
 export const tokens = {
+    getTokenDataByAccessTokenAsync: async function (accessToken: string): Promise<TokenInfo> {
+        return new Promise<TokenInfo>(function (resolve, reject) {
+            tokens.getTokenDataByAccessToken(accessToken, function (err, data) {
+                err ? reject(err) : resolve(data);
+            });
+        })
+    },
+
     getTokenDataByAccessToken: function (accessToken: string, callback: TokenInfoCallback) {
         debug('getTokenDataByAccessToken()');
         return tokens.getTokenData(accessToken, null, callback);
+    },
+
+    getTokenDataByRefreshTokenAsync: async function (refreshToken: string): Promise<TokenInfo> {
+        return new Promise<TokenInfo>(function (resolve, reject) {
+            tokens.getTokenDataByRefreshToken(refreshToken, function (err, data) {
+                err ? reject(err) : resolve(data);
+            });
+        });
     },
 
     getTokenDataByRefreshToken: function (refreshToken: string, callback: TokenInfoCallback) {

@@ -13,7 +13,7 @@ const qs = require('querystring');
 
 import { failMessage, failError, failOAuth, makeError } from './utils-fail';
 import { NameSpec, StringCallback, SimpleCallback, AuthRequest, AuthResponse, AuthSession } from './types';
-import { OidcProfile, WickedApi, WickedPool, Callback, WickedUserShortInfo, WickedError, WickedPasswordStrategy } from 'wicked-sdk';
+import { OidcProfile, WickedApi, WickedPool, Callback, WickedUserShortInfo, WickedError, WickedPasswordStrategy, WickedGrant } from 'wicked-sdk';
 
 export const utils = {
 
@@ -521,6 +521,20 @@ export const utils = {
         viewModel.i18n = getI18n(req, template);
         debug(viewModel);
         res.render(template, viewModel);
+    },
+
+    getUserGrantAsync: async function (userId: string, applicationId: string, apiId): Promise<WickedGrant> {
+        try {
+            const userGrant = await wicked.getUserGrant(userId, applicationId, apiId);
+            return userGrant;
+        } catch (err) {
+            if (err.status === 404 || err.statusCode === 404) {
+                return {
+                    grants: []
+                };
+            }
+            throw err;
+        }
     }
 };
 

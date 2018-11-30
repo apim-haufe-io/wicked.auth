@@ -1,7 +1,7 @@
 'use strict';
 
 import * as async from 'async';
-import { AuthRequest, AuthResponse, EmailMissingHandler, ExpressHandler, IdentityProvider, TokenRequest, AccessTokenCallback, AccessToken } from './types';
+import { AuthRequest, AuthResponse, EmailMissingHandler, ExpressHandler, IdentityProvider, TokenRequest, AccessToken, CheckRefreshDecision, TokenInfo } from './types';
 import { profileStore } from './profile-store'
 const { debug, info, warn, error } = require('portal-env').Logger('portal-auth:generic-router');
 import * as wicked from 'wicked-sdk';
@@ -18,7 +18,7 @@ import { utils } from './utils';
 import { kongUtils } from '../kong-oauth2/kong-utils';
 import { utilsOAuth2 } from './utils-oauth2';
 import { failMessage, failError, failOAuth, makeError, failJson, makeOAuthError } from './utils-fail';
-import { OidcProfile, WickedApiScopes, WickedGrant, WickedUserInfo, WickedUserCreateInfo, WickedScopeGrant, WickedNamespace, WickedCollection, WickedRegistration, PassthroughScopeResponse, Callback, PassthroughScopeRequest, WickedApi, WickedSubscriptionInfo, WickedUserShortInfo } from 'wicked-sdk';
+import { OidcProfile, WickedApiScopes, WickedGrant, WickedUserInfo, WickedUserCreateInfo, WickedScopeGrant, WickedNamespace, WickedCollection, WickedRegistration, PassthroughScopeResponse, Callback, PassthroughScopeRequest, WickedApi, WickedSubscriptionInfo, WickedUserShortInfo, WickedSubscription, WickedSubscriptionScopeModeType } from 'wicked-sdk';
 import { GrantManager } from './grant-manager';
 
 const ERROR_TIMEOUT = 500; // ms
@@ -102,9 +102,9 @@ export class GenericOAuth2Router {
             debug(`Error handler for ${instance.authMethodId}`);
             // Handle OAuth2 errors specifically here
             if (err.oauthError) {
+                error(err);
                 if (req.isTokenFlow) {
                     // Return a plain error message in JSON
-                    error(err);
                     const status = err.status || 500;
                     return res.status(status).json({ error: err.oauthError, error_description: err.message });
                 }
@@ -1548,109 +1548,156 @@ export class GenericOAuth2Router {
         if (!scopes)
             return [];
         const scopeList = scopes.split(' ');
-        return scopeList.filter(s => !s.startsWith("wicked:"));
+        return scopeList.filter(s => !s.startsWith('wicked:') && s.trim());
     }
 
-    private tokenRefreshToken = async (tokenRequest: TokenRequest): Promise<AccessToken> => {
+    private checkRefreshTokenAsync = async (tokenInfo, apiInfo: WickedApi): Promise<CheckRefreshDecision> => {
         const instance = this;
-        return new Promise<AccessToken>(function (resolve, reject) {
-            instance.tokenRefreshToken_(tokenRequest, function (err, accessToken) {
-                err ? reject(err) : resolve(accessToken);
+        return new Promise<CheckRefreshDecision>(function (resolve, reject) {
+            instance.idp.checkRefreshToken(tokenInfo, apiInfo, function (err, data) {
+                err ? reject(err) : resolve(data);
             });
         });
     }
 
-    private tokenRefreshToken_(tokenRequest: TokenRequest, callback: AccessTokenCallback) {
+    private tokenRefreshToken = async (tokenRequest: TokenRequest): Promise<AccessToken> => {
         debug('tokenRefreshToken()');
         const instance = this;
         // Client validation and all that stuff can be done in the OAuth2 adapter,
         // but we still need to verify that the user for which the refresh token was
         // created is still a valid user.
-
-        // TODO: For pass-through APIs, this cannot be used.
         const refreshToken = tokenRequest.refresh_token;
-        tokens.getTokenDataByRefreshToken(refreshToken, function (err, tokenInfo) {
-            if (err)
-                return failOAuth(400, 'invalid_request', 'could not retrieve information on the given refresh token.', err, callback);
+        let tokenInfo: TokenInfo;
+        try {
+            tokenInfo = await tokens.getTokenDataByRefreshTokenAsync(refreshToken);
+        } catch (err) {
+            throw makeOAuthError(400, 'invalid_request', 'could not retrieve information on the given refresh token.', err);
+        }
+        debug('refresh token info:');
+        debug(tokenInfo);
 
-            debug('refresh token info:');
-            debug(tokenInfo);
+        let apiInfo: WickedApi;
+        let applicationId: string;
+        try {
+            const credentialInfo = await kongUtils.lookupApiAndApplicationFromKongCredentialAsync(tokenInfo.credential_id);
+            apiInfo = await utils.getApiInfoAsync(credentialInfo.apiId);
+            applicationId = credentialInfo.applicationId;
+        } catch (err) {
+            throw makeOAuthError(500, 'server_error', 'could not lookup API from given refresh token.', err);
+        }
 
-            kongUtils.lookupApiFromKongCredential(tokenInfo.credential_id, function (err, apiInfo) {
-                if (err)
-                    return failOAuth(500, 'server_error', 'could not lookup API from given refresh token.', err, callback);
+        // Check for passthrough scopes and users
+        if (apiInfo.passthroughUsers && !apiInfo.passthroughScopeUrl) {
+            throw makeOAuthError(500, 'server_error', 'when using the combination of passthrough users and not retrieving the scope from a third party, refresh tokens cannot be used.');
+        } else if (!apiInfo.passthroughUsers && apiInfo.passthroughScopeUrl) {
+            // wicked manages the users, but scope is calculated by somebody else
+            throw makeOAuthError(500, 'server_error', 'wicked managed users and passthrough scope URL is not yet implemented (spec unclear).');
+        } else if (!apiInfo.passthroughUsers && !apiInfo.passthroughScopeUrl) {
+            // Normal case
+            const userId = GenericOAuth2Router.extractUserId(tokenInfo.authenticated_userid);
+            if (!userId)
+                throw makeOAuthError(500, 'server_error', 'could not correctly retrieve authenticated user id from refresh token');
+            let refreshCheckResult: CheckRefreshDecision;
+            try {
+                refreshCheckResult = await instance.checkRefreshTokenAsync(tokenInfo, apiInfo);
+            } catch (err) {
+                throw makeOAuthError(500, 'server_error', 'checking the refresh token returned an unexpected error.', err);
+            }
+            if (!refreshCheckResult.allowRefresh)
+                throw makeOAuthError(403, 'server_error', 'idp disallowed refreshing the token');
 
-                // Check for passthrough scopes and users
-                if (apiInfo.passthroughUsers && !apiInfo.passthroughScopeUrl) {
-                    return failOAuth(500, 'server_error', 'when using the combination of passthrough users and not retrieving the scope from a third party, refresh tokens cannot be used.', callback);
-                } else if (!apiInfo.passthroughUsers && apiInfo.passthroughScopeUrl) {
-                    // wicked manages the users, but scope is calculated by somebody else
-                    return failOAuth(500, 'server_error', 'wicked managed users and passthrough scope URL is not yet implemented (spec unclear).', callback);
-                } else if (!apiInfo.passthroughUsers && !apiInfo.passthroughScopeUrl) {
-                    // Normal case
-                    const userId = GenericOAuth2Router.extractUserId(tokenInfo.authenticated_userid);
-                    if (!userId)
-                        return failOAuth(500, 'server_error', 'could not correctly retrieve authenticated user id from refresh token', callback);
-                    instance.idp.checkRefreshToken(tokenInfo, apiInfo, (err, refreshCheckResult) => {
-                        // TODO: This might be possible to do for all APIs, e.g. check for the previously
-                        // created user (in wicked). If not present -> Don't refresh. We can still keep
-                        // the callback to the IdP for additional things (I can't imagine what right now though).
-                        if (err)
-                            return failOAuth(500, 'server_error', 'checking the refresh token returned an unexpected error.', err, callback);
-                        if (!refreshCheckResult.allowRefresh)
-                            return failOAuth(403, 'server_error', 'idp disallowed refreshing the token', callback);
+            let userInfo: WickedUserInfo;
+            try {
+                userInfo = await wicked.getUser(userId);
+            } catch (err) {
+                throw makeOAuthError(400, 'invalid_request', 'user associated with refresh token is not a valid user (anymore)', err);
+            }
+            debug('wicked local user info:');
+            debug(userInfo);
 
-                        wicked.getUser(userId, function (err, userInfo) {
-                            if (err)
-                                return failOAuth(400, 'invalid_request', 'user associated with refresh token is not a valid user (anymore)', err, callback);
-                            debug('wicked local user info:');
-                            debug(userInfo);
-                            const oidcProfile = utilsOAuth2.wickedUserInfoToOidcProfile(userInfo);
-                            tokenRequest.session_data = oidcProfile;
-                            // Now delegate to oauth2 adapter:
-                            oauth2.token(tokenRequest, callback);
-                        });
-                    });
-                } else {
-                    // Passthrough users and passthrough scope URL, the other usual case if the user
-                    // is not the resource owner. Ask third party.
-                    const tempProfile: OidcProfile = {
-                        sub: tokenInfo.authenticated_userid
-                    };
-                    instance.idp.checkRefreshToken(tokenInfo, apiInfo, function (err, refreshCheckResult) {
-                        if (err)
-                            return failOAuth(500, 'server_error', 'checking whether refresh is allowed return an unexpected error', err, callback);
-                        if (!refreshCheckResult.allowRefresh)
-                            return failOAuth(403, 'server_error', 'idp disallowed refreshing the token', callback);
+            let subscriptionInfo: WickedSubscription;
+            try {
+                subscriptionInfo = await wicked.getSubscription(applicationId, apiInfo.id);
+            } catch (err) {
+                throw makeOAuthError(403, 'unauthorized_client', 'Could not load application subscription to API', err);
+            }
+            // If the subscription is trusted, we don't need this check
+            if (!subscriptionInfo.trusted) {
+                // Make sure we still have the desired scope granted to the application
+                const tokenScope = GenericOAuth2Router.cleanupScopeString(tokenInfo.scope);
+                if (tokenScope.length > 0) {
+                    // Handles 404
+                    const userGrant = await utils.getUserGrantAsync(userId, applicationId, apiInfo.id);
+                    const missingGrants = instance.diffGrants(userGrant.grants, tokenScope);
+                    if (missingGrants.length > 0) {
+                        warn(`tokenRefreshToken: Attempt to refresh a token for which there is no grant (anymore)`);
+                        warn(`tokenRefreshToken: Missing grants: ${missingGrants.toString()}`);
+                        throw makeOAuthError(403, 'unauthorized_client', 'Application tried to refresh a token with a certain scope, but scope is not granted by resource owner.');
+                    }
 
-                        const scopes = GenericOAuth2Router.cleanupScopeString(tokenInfo.scope);
-                        instance.resolvePassthroughScope(scopes, tempProfile, apiInfo.passthroughScopeUrl, (err, scopeResponse: PassthroughScopeResponse) => {
-                            if (err)
-                                return failError(500, err, callback);
-                            tokenRequest.session_data = tempProfile;
-                            // HACK_PASSTHROUGH_REFRESH: We will have to rewrite this to a "password" grant, as we cannot change the scope otherwise
-                            tokenRequest.grant_type = 'password';
-                            tokenRequest.authenticated_userid = scopeResponse.authenticated_userid;
-                            tokenRequest.authenticated_userid_is_verbose = true;
-                            tokenRequest.scope = scopeResponse.authenticated_scope;
-                            // Tell tokenPasswordGrantKong that it's okay to use the password grant even if the API is not
-                            // configured to support it.
-                            tokenRequest.accept_password_grant = true;
-
-                            oauth2.token(tokenRequest, (err, accessToken: AccessToken) => {
-                                if (err)
-                                    return callback(err);
-                                // Delete the old token
-                                tokens.deleteTokens(tokenInfo.access_token, null, (err) => {
-                                    if (err)
-                                        error(err);
-                                });
-                                return callback(null, accessToken);
-                            });
-                        });
-                    });
+                    // Now also check allowed scopes; this *might* have changed
+                    if (subscriptionInfo.allowedScopesMode === WickedSubscriptionScopeModeType.None) {
+                        warn(`tokenRefreshToken: Application ${applicationId} has scope mode set to "none", denying refresh of token which has a scope`);
+                        throw makeOAuthError(403, 'unauthorized_client', 'Application tried to refresh a token with a non-empty scope, but is not allowed any scopes.');
+                    }
+                    // "Select" Mode - only specific scope allowed
+                    if (subscriptionInfo.allowedScopesMode === WickedSubscriptionScopeModeType.Select) {
+                        for (let i = 0; i < tokenScope.length; ++i) {
+                            if (!subscriptionInfo.allowedScopes.find(s => s == tokenScope[i]))
+                                throw makeOAuthError(403, 'unauthorized_client', `Application tried refresh a token with scope "${tokenScope[i]}", but this scope is not allowed.`);
+                        }
+                    }
+                    // Else case: "All", any scope is allowed for the application/subscription
                 }
+            }
+
+            const oidcProfile = utilsOAuth2.wickedUserInfoToOidcProfile(userInfo);
+            tokenRequest.session_data = oidcProfile;
+            // Now delegate to oauth2 adapter:
+            return await oauth2.tokenAsync(tokenRequest);
+        } else {
+            // Passthrough users and passthrough scope URL, the other usual case if the user
+            // is not the resource owner. Ask third party.
+            const tempProfile: OidcProfile = {
+                sub: tokenInfo.authenticated_userid
+            };
+            let refreshCheckResult: CheckRefreshDecision;
+            try {
+                refreshCheckResult = await instance.checkRefreshTokenAsync(tokenInfo, apiInfo);
+            } catch (err) {
+                throw makeOAuthError(500, 'server_error', 'checking whether refresh is allowed return an unexpected error', err);
+            }
+
+            if (!refreshCheckResult.allowRefresh)
+                throw makeOAuthError(403, 'server_error', 'idp disallowed refreshing the token');
+
+            const scopes = GenericOAuth2Router.cleanupScopeString(tokenInfo.scope);
+            let scopeResponse: PassthroughScopeResponse;
+            try {
+                scopeResponse = await instance.resolvePassthroughScopeAsync(scopes, tempProfile, apiInfo.passthroughScopeUrl);
+            } catch (err) {
+                throw makeOAuthError(500, 'server_error', 'Could not resolve passthrough scope via external service.', err);
+            }
+            tokenRequest.session_data = tempProfile;
+            // HACK_PASSTHROUGH_REFRESH: We will have to rewrite this to a "password" grant, as we cannot change the scope otherwise
+            tokenRequest.grant_type = 'password';
+            tokenRequest.authenticated_userid = scopeResponse.authenticated_userid;
+            tokenRequest.authenticated_userid_is_verbose = true;
+            tokenRequest.scope = scopeResponse.authenticated_scope;
+            // Tell tokenPasswordGrantKong that it's okay to use the password grant even if the API is not
+            // configured to support it.
+            tokenRequest.accept_password_grant = true;
+
+            // If this throws, it falls through (on purpose)
+            const accessToken = await oauth2.tokenAsync(tokenRequest);
+            // Delete the old token; this is async, on purpose, we just log
+            // errors but don't fail if this actually fails.
+            tokens.deleteTokens(tokenInfo.access_token, null, (err) => {
+                if (err)
+                    error(err);
             });
-        });
+            return accessToken;
+        }
     }
+
 }
