@@ -35,7 +35,7 @@ export const redisConnection = {
         // Use the predefined client, no need to create a second one.
         sessionStoreOptions.client = redisConnection.getRedis();
 
-        debug('Using redis session store with options ' + sessionStoreOptions);
+        debug('Using redis session store with options ' + JSON.stringify(sessionStoreOptions));
 
         return new SessionStore(sessionStoreOptions);
     }
