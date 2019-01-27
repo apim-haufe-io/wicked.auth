@@ -3,7 +3,7 @@ extends auth_layout
 block content
     h2 #{i18n.select_namespace}
     
-    p #{i18n.description}
+    h5.mb-3 #{i18n.description}
 
     each namespace, i in namespaces
         form(role='form' action='#{baseUrl}/#{selectNamespaceUrl}' method='post')
@@ -14,5 +14,5 @@ block content
         
         br
     
-    h5
+    h6
         a(href='#{baseUrl}/#{logoutUrl}') #{i18n.logout}

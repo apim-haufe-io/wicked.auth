@@ -44,19 +44,19 @@ block scripts
 block content
     h2 #{i18n.signup}
     
-    p #{i18n.welcome_to} #{title}.
+    h5.mb-3 #{i18n.welcome_to} #{title}.
 
     if displayRedirectMessage
-        h4 #{i18n.redirect_message}
+        h5 #{i18n.redirect_message}
 
-    h4.
+    h6.mb-3.
         By signing up to this portal, you agree to our <a target='_blank' href='#{portalUrl}content/terms-and-conditions'>Terms
         and Conditions</a> and the <a target='_blank' href='#{portalUrl}content/privacy-policy'>Privacy/Cookie Policy</a>.
 
     if errorMessage
         +flashMessage('error', errorMessage)
 
-    form(role='form' action='#{baseUrl}/#{signupUrl}' method='post' onsubmit='return validateSignup();')
+    form(role='form' action='#{baseUrl}/#{signupUrl}' method='post' onsubmit='return validateSignup();').mb-3
 
         input(type='hidden' name='_csrf' value='#{csrfToken}')
 
@@ -81,7 +81,7 @@ block content
         button(class='btn btn-lg btn-primary btn-block' type='submit') #{i18n.signup}
     
     if authorizeUrl
-        h5
+        h6
             a(href='#{baseUrl}/#{authorizeUrl}') #{i18n.login_existing}
-    h5
+    h6
         a(href='#{baseUrl}/#{forgotPasswordUrl}') #{i18n.forgot_password}
