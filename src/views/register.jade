@@ -4,29 +4,32 @@ block scripts
     script(type='text/javascript').
         function validateRegister() {
             const model = !{JSON.stringify(poolInfo)};
-
-            let somethingBad = false;
-            for (let i=0; i<model.properties.length; ++i) {
-                const propInfo = model.properties[i];
-                const propName = propInfo.id;
-                const content = $('#' + name).val();
-                if (propInfo.type !== 'string')
-                    continue;
-                let errMessage = '';
-                if (propInfo.required && !content) {
-                    errMessage = 'Field is required, it cannot be empty.';
-                } else if (content) {
-                    if (propInfo.minLength && content.length < propInfo.minLength)
-                        errMessage = 'Entry has to be at least ' + propInfo.minLength + ' characters.';
-                    else if (propInfo.maxLength && content.length > propInfo.maxLength)
-                        errMessage = 'Too many characters, maximum ' + propInfo.maxLength + ' allowed.';
+            try {
+                let somethingBad = false;
+                for (let i=0; i<model.properties.length; ++i) {
+                    const propInfo = model.properties[i];
+                    const propName = propInfo.id;
+                    const content = $('#' + propName).val();
+                    if (propInfo.type !== 'string')
+                        continue;
+                    let errMessage = '';
+                    if (propInfo.required && !content) {
+                        errMessage = 'Field is required, it cannot be empty.';
+                    } else if (content) {
+                        if (propInfo.minLength && content.length < propInfo.minLength)
+                            errMessage = 'Entry has to be at least ' + propInfo.minLength + ' characters.';
+                        else if (propInfo.maxLength && content.length > propInfo.maxLength)
+                            errMessage = 'Too many characters, maximum ' + propInfo.maxLength + ' allowed.';
+                    }
+                    if (errMessage)
+                        somethingBad = true;
+                    $('#error' + propName).text(errMessage);
                 }
-                if (errMessage)
-                    somethingBad = true;
-                $('#error' + name).text(errMessage);
+                return !somethingBad;
+            } catch (err) {
+                alert('An error occurred: ' + err);
+                return false;
             }
-
-            return !somethingBad;
         }
 
 block content
