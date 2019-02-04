@@ -471,22 +471,23 @@ export class GenericOAuth2Router {
             authRequest.scope_differs = scopeValidationResult.scopeDiffers;
 
             let isLoggedIn = utils.isLoggedIn(req, instance.authMethodId);
-            // Borrowed from OpenID Connect, check for prompt request for implicit grant
+            // Borrowed from OpenID Connect, check for prompt request
             // http://openid.net/specs/openid-connect-implicit-1_0.html#RequestParameters
-            if (authRequest.response_type === 'token') {
-                switch (authRequest.prompt) {
-                    case 'none':
-                        if (!isLoggedIn)
-                            return failOAuth(401, 'login_required', 'user must be logged in interactively, cannot authorize without logged in user.', next);
-                        return instance.authorizeFlow(req, res, next);
-                    case 'login':
-                        // Force login; wipe session data
-                        if (isLoggedIn) {
-                            delete req.session[instance.authMethodId].authResponse;
-                            isLoggedIn = false;
-                        }
-                        break;
-                }
+            switch (authRequest.prompt) {
+                case 'none':
+                    if (!isLoggedIn)
+                        return failOAuth(401, 'login_required', 'user must be logged in interactively, cannot authorize without logged in user.', next);
+                    return instance.authorizeFlow(req, res, next);
+                case 'login':
+                    // Force login; wipe session data
+                    if (isLoggedIn) {
+                        delete req.session[instance.authMethodId].authResponse;
+                        isLoggedIn = false;
+                    }
+                    break;
+                default:
+                    warn(`Unsupported prompt parameter '${authRequest.prompt}'`);
+                    break;
             }
             // We're fine. Check for pre-existing sessions.
             if (isLoggedIn) {

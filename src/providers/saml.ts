@@ -81,7 +81,12 @@ export class SamlIdP implements IdentityProvider {
      */
     public authorizeWithUi(req, res, next, authRequest: AuthRequest) {
         // Do your thing...
-        this.serviceProvider.create_login_request_url(this.identityProvider, {}, function (err, loginUrl, requestId) {
+        const options = {} as any;
+        if (authRequest.prompt == 'login') {
+            debug('Forcing authentication step (SAML)');
+            options.force_authn = true;
+        }
+        this.serviceProvider.create_login_request_url(this.identityProvider, options, function (err, loginUrl, requestId) {
             if (err)
                 return failError(500, err, next);
             // Remember the request ID
