@@ -720,8 +720,9 @@ function tokenFlow(inputData: TokenRequest, tokenKongInvoker: TokenKongInvoker, 
         callback => getOAuth2Config(oauthInfo, callback),
         //callback => lookupConsumer(oauthInfo, callback), // What was this for?
         callback => lookupApi(oauthInfo, callback),
-        callback => tokenKongInvoker(oauthInfo, callback)
-    ], function (err, result) {
+        callback => tokenKongInvoker(oauthInfo, callback),
+        callback => checkClientTypeAndReturnValue(oauthInfo, callback)
+    ], function (err, _) {
         debug('tokenFlow async series returned.');
         if (err) {
             debug('but failed.');
@@ -731,6 +732,20 @@ function tokenFlow(inputData: TokenRequest, tokenKongInvoker: TokenKongInvoker, 
         // Oh, wow, that worked.
         callback(null, oauthInfo.accessToken);
     });
+}
+
+function checkClientTypeAndReturnValue(oauthInfo: TokenOAuthInfo, callback: TokenOAuthInfoCallback): void {
+    debug('checkClientTypeAndReturnValue()');
+    if (oauthInfo.appInfo.confidential)
+        return callback(null, oauthInfo);
+    // We have a public client; take out the refresh token, if present, for the authorization code grant.
+    if (oauthInfo.inputData.grant_type == 'authorization_code') {
+        if (oauthInfo.accessToken && oauthInfo.accessToken.refresh_token) {
+            debug(`Application ${oauthInfo.appInfo.id} is a public client; deleting refresh_token.`);
+            delete oauthInfo.accessToken.refresh_token;
+        }
+    }
+    return callback(null, oauthInfo);
 }
 
 // Note that this is not necessary for the /authorize end point, only for the token
