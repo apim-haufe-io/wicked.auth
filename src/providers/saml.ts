@@ -302,8 +302,8 @@ export class SamlIdP implements IdentityProvider {
     private getLogoutResponseUrl(inResponseTo, relayState, callback) {
         debug('getLogoutResponseUrl');
         const instance = this;
-        if (!instance.serviceProvider.sso_logout_url) {
-            return callback(makeError('The SAML configuration does not contain an sso_logout_url.', 500));
+        if (!instance.identityProvider.sso_logout_url) {
+            return callback(makeError('The SAML configuration (identityProvider) does not contain an sso_logout_url.', 500));
         }
         this.serviceProvider.create_logout_response_url(
             instance.identityProvider,
