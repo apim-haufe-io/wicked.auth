@@ -3,7 +3,7 @@
 import { GenericOAuth2Router } from '../common/generic-router';
 import { IdpOptions, IdentityProvider, GoogleIdpConfig, ExpressHandler, AuthResponse, EndpointDefinition, AuthRequest, CheckRefreshDecision } from '../common/types';
 import { OidcProfile, Callback, WickedApi } from 'wicked-sdk';
-const { debug, info, warn, error } = require('portal-env').Logger('portal-auth:github');
+const { debug, info, warn, error } = require('portal-env').Logger('portal-auth:google');
 const Router = require('express').Router;
 
 import { utils } from '../common/utils';

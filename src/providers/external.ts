@@ -3,7 +3,7 @@
 import { GenericOAuth2Router } from '../common/generic-router';
 import { AuthRequest, AuthResponse, IdentityProvider, EndpointDefinition, IdpOptions, CheckRefreshDecision, BooleanCallback, ExternalIdpConfig, TokenInfo } from '../common/types';
 import { OidcProfile, WickedUserInfo, Callback } from 'wicked-sdk';
-const { debug, info, warn, error } = require('portal-env').Logger('portal-auth:local');
+const { debug, info, warn, error } = require('portal-env').Logger('portal-auth:external');
 import * as wicked from 'wicked-sdk';
 const Router = require('express').Router;
 const qs = require('querystring');

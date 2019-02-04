@@ -3,7 +3,7 @@
 import { GenericOAuth2Router } from '../common/generic-router';
 import { AuthRequest, EndpointDefinition, AuthResponse, IdentityProvider, IdpOptions, SamlIdpConfig, CheckRefreshDecision, BooleanCallback, SamlAuthResponse } from '../common/types';
 import { OidcProfile, Callback, WickedApi } from 'wicked-sdk';
-const { debug, info, warn, error } = require('portal-env').Logger('portal-auth:idp');
+const { debug, info, warn, error } = require('portal-env').Logger('portal-auth:saml');
 const Router = require('express').Router;
 const saml2 = require('saml2-js');
 const mustache = require('mustache');
