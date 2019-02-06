@@ -92,10 +92,10 @@ app.initApp = function (authServerConfig: WickedAuthServer, callback: SimpleCall
             healthy: 1,
             pingUrl: '/ping',
             version: utils.getVersion(),
-            error: null
-            // gitLastCommit: utils.getGitLastCommit(),
-            // gitBranch: utils.getGitBranch(),
-            // buildDate: utils.getBuildDate()
+            error: null,
+            gitLastCommit: utils.getGitLastCommit(),
+            gitBranch: utils.getGitBranch(),
+            buildDate: utils.getBuildDate()
         };
         if (!app.initialized) {
             health.healthy = 2;

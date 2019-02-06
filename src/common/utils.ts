@@ -181,7 +181,7 @@ export const utils = {
     _packageVersion: "",
     getVersion: function () {
         if (!utils._packageVersion) {
-            const packageFile = path.join(__dirname, '..', 'package.json');
+            const packageFile = path.join(__dirname, '..', '..', 'package.json');
             if (fs.existsSync(packageFile)) {
                 try {
                     const packageInfo = JSON.parse(fs.readFileSync(packageFile, 'utf8'));
@@ -535,6 +535,42 @@ export const utils = {
             }
             throw err;
         }
+    },
+
+    _gitLastCommit: null,
+    getGitLastCommit() {
+        if (!utils._gitLastCommit) {
+            const lastCommitFile = path.join(__dirname, '..', '..', 'git_last_commit');
+            if (fs.existsSync(lastCommitFile))
+                utils._gitLastCommit = fs.readFileSync(lastCommitFile, 'utf8');
+            else
+                utils._gitLastCommit = '(no last git commit found - running locally?)';
+        }
+        return utils._gitLastCommit;
+    },
+
+    _gitBranch: null,
+    getGitBranch() {
+        if (!utils._gitBranch) {
+            const gitBranchFile = path.join(__dirname, '..', '..', 'git_branch');
+            if (fs.existsSync(gitBranchFile))
+                utils._gitBranch = fs.readFileSync(gitBranchFile, 'utf8');
+            else
+                utils._gitBranch = '(unknown)';
+        }
+        return utils._gitBranch;
+    },
+
+    _buildDate: null,
+    getBuildDate() {
+        if (!utils._buildDate) {
+            const buildDateFile = path.join(__dirname, '..', '..', 'build_date');
+            if (fs.existsSync(buildDateFile))
+                utils._buildDate = fs.readFileSync(buildDateFile, 'utf8');
+            else
+                utils._buildDate = '(unknown build date)';
+        }
+        return utils._buildDate;
     }
 };
 
