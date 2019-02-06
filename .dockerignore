@@ -3,7 +3,6 @@ node_modules
 Dockerfile-build
 .DS_Store
 certs
-.git
 sessions
 *.tgz
 dist
