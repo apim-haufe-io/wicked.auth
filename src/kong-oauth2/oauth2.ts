@@ -2,7 +2,7 @@
 
 import * as crypto from 'crypto';
 import { SimpleCallback, StringCallback, AuthRequest, TokenRequest, OAuth2Request, AccessToken, AccessTokenCallback } from '../common/types';
-import { WickedApplication, WickedSubscription, KongApi, WickedApi, Callback } from 'wicked-sdk';
+import { WickedApplication, WickedClientType, WickedSubscription, KongApi, WickedApi, Callback } from 'wicked-sdk';
 const { debug, info, warn, error } = require('portal-env').Logger('portal-auth:oauth2');
 const async = require('async');
 import * as wicked from 'wicked-sdk';
@@ -738,8 +738,8 @@ function checkClientTypeAndReturnValue(oauthInfo: TokenOAuthInfo, callback: Toke
     debug('checkClientTypeAndReturnValue()');
     if (oauthInfo.appInfo.confidential)
         return callback(null, oauthInfo);
-    // We have a public client; take out the refresh token, if present, for the authorization code grant.
-    if (oauthInfo.inputData.grant_type == 'authorization_code') {
+    // We have a public client; take out the refresh token, if present, for the authorization code grant, and for client type "public_spa".
+    if (oauthInfo.inputData.grant_type == 'authorization_code' && oauthInfo.appInfo.clientType == WickedClientType.Public_SPA) {
         if (oauthInfo.accessToken && oauthInfo.accessToken.refresh_token) {
             debug(`Application ${oauthInfo.appInfo.id} is a public client; deleting refresh_token.`);
             delete oauthInfo.accessToken.refresh_token;
