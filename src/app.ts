@@ -110,6 +110,18 @@ app.initApp = function (authServerConfig: WickedAuthServer, callback: SimpleCall
         res.json(health);
     }
 
+    // Configure node-sass-middleware
+    var sassMiddleware = require('node-sass-middleware');
+    app.use(sassMiddleware({
+        // src: wicked.getGlobals().db.staticConfig,
+        src: path.join(__dirname, '..', 'node_modules', 'portal-env', 'initial-config', 'static', 'content', 'stylesheets'),
+        dest: path.join(__dirname, 'assets'),
+        prefix: basePath + '/assets',
+        debug: wicked.isDevelopmentMode(),
+        outputStyle: 'compressed',
+        response: true,
+    }));
+
     app.use(basePath + '/bootstrap', express.static(path.join(__dirname, 'assets/bootstrap/dist')));
     app.use(basePath + '/jquery', express.static(path.join(__dirname, 'assets/jquery/dist')));
 

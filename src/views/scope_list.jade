@@ -13,13 +13,13 @@ block content
         +flashMessage(flashMessage.type, flashMessage.message)
 
     if grants.length <= 0
-        p You haven't granted access to any applications.
+        h5.mb-3 You haven't granted access to any applications.
 
-        h5.
+        h6.
             In case you have granted access to an API on your behalf, you may use this page
             to review and revoke the application's rights to access specific APIs.
     else
-        p You have given the following applications access to APIs on your behalf:
+        h5.mb-3 You have given the following applications access to APIs on your behalf:
 
         table.table
             thead
@@ -38,12 +38,12 @@ block content
                             input(type='hidden' name='revoke_api' value='#{grant.apiInfo.id}')
                             button(class='btn btn-danger btn-block' type='submit') Revoke
 
-        h5.
+        h6.
             Click the "Revoke" button to revoke an application's right to access an API
             on your behalf. The next time, the application will need to ask for your 
             permission again.
 
         br
 
-        h5
+        h6
             a(href='#{baseUrl}/#{manageGrantsUrl}') Refresh page.

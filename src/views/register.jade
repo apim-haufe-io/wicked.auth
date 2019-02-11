@@ -35,19 +35,19 @@ block scripts
 block content
     h2 Registration
     
-    p Access to this API requires registration.
+    h5.mb-4 Access to this API requires registration.
 
     if displayRedirectMessage
-        h4 You will be redirected to the desired page right after successfully logging in.
+        h5 You will be redirected to the desired page right after successfully logging in.
 
-    h4.
+    h5.mb-3.
         By having signed up and registering, you agree to our <a target='_blank' href='#{portalUrl}content/terms-and-conditions'>Terms
         and Conditions</a> and the <a target='_blank' href='#{portalUrl}content/privacy-policy'>Privacy/Cookie Policy</a>.
 
     if errorMessage
         +flashMessage('error', errorMessage)
 
-    form(role='form' action='#{baseUrl}/#{registerUrl}' method='post' onsubmit='return validateRegister();')
+    form(role='form' action='#{baseUrl}/#{registerUrl}' method='post' onsubmit='return validateRegister();').mb-3
 
         input(type='hidden' name='_csrf' value='#{csrfToken}')
         input(type='hidden' name='nonce' value='#{nonce}')
@@ -69,9 +69,9 @@ block content
                 small
                     span(id="error#{propInfo.id}" style='color:red')
 
-        p Fields marked with (*) are required.
+        p.text-secondary Fields marked with (*) are required.
 
         button(class='btn btn-lg btn-primary btn-block' type='submit') Register
     
-    h5
+    h6
         a(href='#{baseUrl}/#{logoutUrl}') Log out
