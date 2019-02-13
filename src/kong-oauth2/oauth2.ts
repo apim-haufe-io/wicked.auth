@@ -353,7 +353,7 @@ function authorizeAuthorizationCodeKong(oauthInfo: AuthorizeOAuthInfo, callback:
 function authorizeWithKong(oauthInfo: AuthorizeOAuthInfo, responseType: string, callback: AuthorizeOAuthInfoCallback) {
     debug('authorizeWithKong()');
     async.waterfall([
-        callback => getAuthorizeRequest(responseType, oauthInfo, callback),
+        callback => createAuthorizeRequest(responseType, oauthInfo, callback),
         (authorizeRequest, callback) => postAuthorizeRequest(authorizeRequest, callback)
     ], function (err, redirectUri) {
         if (err)
@@ -407,7 +407,7 @@ function tokenAuthorizationCodeKong(oauthInfo: TokenOAuthInfo, callback: TokenOA
 
 function tokenWithKong(oauthInfo: TokenOAuthInfo, grantType: string, callback: TokenOAuthInfoCallback) {
     async.waterfall([
-        callback => getTokenRequest(grantType, oauthInfo, callback),
+        callback => createTokenRequest(grantType, oauthInfo, callback),
         (tokenRequest, callback) => postTokenRequest(tokenRequest, callback)
     ], function (err, accessToken) {
         if (err)
@@ -632,22 +632,10 @@ function authorizeFlow(inputData: AuthRequest, authorizeKongInvoker: AuthorizeKo
     });
 }
 
-function getAuthorizeRequest(responseType: string, oauthInfo: AuthorizeOAuthInfo, callback: AuthorizeRequestPayloadCallback) {
-    const apiUrl = wicked.getExternalApiUrl();
-    const authorizeUrl = buildKongUrl(apiUrl, oauthInfo.apiInfo.uris[0], '/oauth2/authorize');
-    debug('authorizeUrl: ' + authorizeUrl);
-
-    let headers = null;
-    let agent = null;
-
-    // Workaround for local connections and testing
-    const wickedGlobals = wicked.getGlobals();
-    if ('http' === wickedGlobals.network.schema) {
-        headers = { 'X-Forwarded-Proto': 'https' };
-    } else if ('https' === wickedGlobals.network.schema) {
-        // Make sure we accept self signed certs
-        agent = sslAgent;
-    }
+function createAuthorizeRequest(responseType: string, oauthInfo: AuthorizeOAuthInfo, callback: AuthorizeRequestPayloadCallback) {
+    const { kongUrl, headers, agent } = buildKongUrl(oauthInfo.apiInfo.uris[0], '/oauth2/authorize');
+    const authorizeUrl = kongUrl.toString();;
+    info(`Kong Authorize URL: ${authorizeUrl}`);
 
     let scope = null;
     if (oauthInfo.inputData.scope) {
@@ -819,22 +807,10 @@ function verifyPKCE(tokenRequest: TokenRequest): boolean {
     return false;
 }
 
-function getTokenRequest(grantType: string, oauthInfo: TokenOAuthInfo, callback: TokenRequestPayloadCallback) {
-    const apiUrl = wicked.getExternalApiUrl();
-    const tokenUrl = buildKongUrl(apiUrl, oauthInfo.apiInfo.uris[0], '/oauth2/token');
-    debug('tokenUrl: ' + tokenUrl);
-
-    let headers: RequestHeaders = null;
-    let agent = null;
-
-    // Workaround for local connections and testing
-    const wickedGlobals = wicked.getGlobals();
-    if ('http' === wickedGlobals.network.schema) {
-        headers = { 'X-Forwarded-Proto': 'https' };
-    } else if ('https' === wickedGlobals.network.schema) {
-        // Make sure we accept self signed certs
-        agent = sslAgent;
-    }
+function createTokenRequest(grantType: string, oauthInfo: TokenOAuthInfo, callback: TokenRequestPayloadCallback) {
+    const { kongUrl, headers, agent } = buildKongUrl(oauthInfo.apiInfo.uris[0], '/oauth2/token');
+    const tokenUrl = kongUrl.toString();
+    info(`Kong Token URL: ${tokenUrl}`);
 
     let scope = null;
     if (oauthInfo.inputData.scope) {
@@ -1071,8 +1047,14 @@ function lookupApi(oauthInfo: OAuthInfo, callback: OAuthInfoCallback): void {
     });
 }
 
-function buildKongUrl(apiUrl: string, requestPath: string, additionalPath: string): string {
-    let hostUrl = apiUrl;
+function buildKongUrl(requestPath: string, additionalPath: string): { kongUrl: URL, headers: RequestHeaders, agent: any } {
+    const globs = wicked.getGlobals();
+    let hostUrl = wicked.getExternalApiUrl();
+    if (globs.network && globs.network.kongProxyUrl) {
+        // Prefer to use the internal proxy URL
+        hostUrl = wicked.getInternalKongProxyUrl();
+    }
+
     let reqPath = requestPath;
     let addPath = additionalPath;
     if (!hostUrl.endsWith('/'))
@@ -1083,7 +1065,29 @@ function buildKongUrl(apiUrl: string, requestPath: string, additionalPath: strin
         reqPath = reqPath + '/';
     if (addPath.startsWith('/'))
         addPath = addPath.substring(1); // cut leading /
-    return hostUrl + reqPath + addPath;
+
+    const kongUrl = new URL(hostUrl + reqPath + addPath);
+
+    let headers: RequestHeaders = null;
+    let agent = null;
+
+    // Depending on the type of protocol, we need additional settings:
+    if ('http:' === kongUrl.protocol) {
+        // We are accessing Kong via the internal, unencrypted port; this is the default,
+        // but Kong needs to know that it's safe to do this. In production environments,
+        // the proxy port must be behind a TLS terminating load balancer, which by default
+        // already introduces this header.
+        headers = { 'X-Forwarded-Proto': 'https' };
+    } else if ('https:' === kongUrl.protocol) {
+        // Make sure we accept self signed certs.
+        agent = sslAgent;
+    }
+    
+    return {
+        kongUrl,
+        headers,
+        agent
+    };
 }
 
 // module.exports = oauth2;
