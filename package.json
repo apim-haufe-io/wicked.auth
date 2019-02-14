@@ -55,7 +55,7 @@
     "passport-google-oauth20": "1.0.0",
     "passport-oauth": "1.0.0",
     "passport-twitter": "1.0.4",
-    "portal-env": "file:../portal-env-1.0.0.tgz",
+    "portal-env": "file:../portal-env.tgz",
     "redis": "2.8.0",
     "request": "2.87.0",
     "saml2-js": "2.0.3",
