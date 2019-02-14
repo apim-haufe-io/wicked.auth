@@ -8,3 +8,4 @@ dist
 Dockerfile
 Dockerfile-alpine
 package-lock.json
+build_date
