@@ -62,15 +62,28 @@ export class UtilsOAuth2 {
         if (authRequest.redirect_uri) {
             // Verify redirect_uri from application, has to match what is passed in
             const uri1 = utils.normalizeRedirectUri(authRequest.redirect_uri);
-            const uri2 = utils.normalizeRedirectUri(subscriptionInfo.application.redirectUri);
+            let registeredUris = '';
+            let foundMatching = false;
+            for (let i = 0; i < subscriptionInfo.application.redirectUris.length; ++i) {
+                const uri2 = utils.normalizeRedirectUri(subscriptionInfo.application.redirectUris[i]);
+                if (uri1 === uri2) {
+                    foundMatching = true;
+                    debug(`Found matching redirect_uri: ${uri2}`);
+                }
+                if (registeredUris) {
+                    registeredUris += ', ';
+                }
+                registeredUris += uri2;
+            }
 
-            if (uri1 !== uri2) {
-                error(`Expected redirect_uri: ${uri2}`);
+            if (!foundMatching) {
                 error(`Received redirect_uri: ${uri1}`);
-                throw makeError('The provided redirect_uri does not match the registered redirect_uri', 400);
+                error(`Received redirect_uri is not any of ${registeredUris}`);
+                throw makeError('The provided redirect_uri does not match any registered redirect_uri', 400);
             }
         } else {
             // https://tools.ietf.org/html/rfc6749#section-4.1.1
+            // We will pick one (the first one in case we have multiple ones)
             authRequest.redirect_uri = subscriptionInfo.application.redirectUri;
         }
 

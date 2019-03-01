@@ -633,6 +633,7 @@ function authorizeFlow(inputData: AuthRequest, authorizeKongInvoker: AuthorizeKo
 }
 
 function createAuthorizeRequest(responseType: string, oauthInfo: AuthorizeOAuthInfo, callback: AuthorizeRequestPayloadCallback) {
+    debug('createAuthorizeRequest()');
     const { kongUrl, headers, agent } = buildKongUrl(oauthInfo.apiInfo.uris[0], '/oauth2/authorize');
     const authorizeUrl = kongUrl.toString();;
     info(`Kong Authorize URL: ${authorizeUrl}`);
@@ -647,13 +648,14 @@ function createAuthorizeRequest(responseType: string, oauthInfo: AuthorizeOAuthI
         else // else: what?
             return failOAuth(400, 'invalid_scope', 'unknown type of scope input parameter: ' + typeof (s), callback);
     }
-    debug('requested scope: ' + scope);
+    debug(`requested scope: ${scope}`);
+    debug(`requested redirect_uri: ${oauthInfo.inputData.redirect_uri}`);
 
     const oauthBody: any = {
         response_type: responseType,
         provision_key: oauthInfo.provisionKey,
         client_id: oauthInfo.subsInfo.clientId,
-        redirect_uri: oauthInfo.appInfo.redirectUri,
+        redirect_uri: oauthInfo.inputData.redirect_uri,
         authenticated_userid: oauthInfo.inputData.authenticated_userid,
     };
     if (scope)

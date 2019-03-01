@@ -1204,6 +1204,7 @@ export class GenericOAuth2Router {
             authenticated_userid: this.makeAuthenticatedUserId(authRequest, authResponse),
             api_id: authRequest.api_id,
             client_id: authRequest.client_id,
+            redirect_uri: authRequest.redirect_uri,
             scope: scope,
             auth_method: req.app.get('server_name') + ':' + this.authMethodId,
         }, function (err, redirectUri) {
