@@ -294,6 +294,11 @@ app.initApp = function (authServerConfig: WickedAuthServer, callback: SimpleCall
         if (err.status !== 404) {
             error(err);
         }
+        if (err.status === 302) {
+            // Issue as redirect
+            res.redirect(`${err.redirectUri}?error=${err.oauthError}&error_description=${err.message}`);
+            return;
+        }
         res.status(err.status || 500);
         // From failJson?
         if (err.issueAsJson) {

@@ -17,7 +17,7 @@ const qs = require('querystring');
 import { utils } from './utils';
 import { kongUtils } from '../kong-oauth2/kong-utils';
 import { utilsOAuth2 } from './utils-oauth2';
-import { failMessage, failError, failOAuth, makeError, failJson, makeOAuthError } from './utils-fail';
+import { failMessage, failError, failOAuth, failRedirect, makeError, failJson, makeOAuthError } from './utils-fail';
 import { OidcProfile, WickedApiScopes, WickedGrant, WickedUserInfo, WickedUserCreateInfo, WickedScopeGrant, WickedNamespace, WickedCollection, WickedRegistration, PassthroughScopeResponse, Callback, PassthroughScopeRequest, WickedApi, WickedSubscriptionInfo, WickedUserShortInfo, WickedSubscription, WickedSubscriptionScopeModeType } from 'wicked-sdk';
 import { GrantManager } from './grant-manager';
 
@@ -476,7 +476,7 @@ export class GenericOAuth2Router {
             switch (authRequest.prompt) {
                 case 'none':
                     if (!isLoggedIn)
-                        return failOAuth(401, 'login_required', 'user must be logged in interactively, cannot authorize without logged in user.', next);
+                        return failRedirect('login_required', 'user must be logged in interactively, cannot authorize without logged in user.', authRequest.redirect_uri, next);
                     return instance.authorizeFlow(req, res, next);
                 case 'login':
                     // Force login; wipe session data

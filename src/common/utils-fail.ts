@@ -3,6 +3,7 @@
 export class StatusError extends Error {
     public status: number;
     public oauthError: string;
+    public redirectUri: string;
     public internalError: Error;
     public issueAsJson: boolean = false;
 
@@ -70,6 +71,13 @@ export function failOAuth() {
         callback = internalErrorOrCallback;
     else
         err.internalError = internalErrorOrCallback;
+    return callback(err);
+}
+
+export function failRedirect(oauthError: string, message: string, redirectUri: string, callback): void {
+    const err = new StatusError(302, message);
+    err.oauthError = oauthError;
+    err.redirectUri = redirectUri;
     return callback(err);
 }
 

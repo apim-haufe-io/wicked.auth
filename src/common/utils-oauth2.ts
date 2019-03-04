@@ -92,12 +92,12 @@ export class UtilsOAuth2 {
         if (authRequest.response_type === 'code' &&
             application.confidential !== true) {
             if (!authRequest.code_challenge)
-                throw makeOAuthError(400, 'invalid_request', 'the given client is a public client; it must present a code_challenge (PKCE, RFC7636) to use the authorization code grant.');
+                throw makeError('the given client is a public client; it must present a code_challenge (PKCE, RFC7636) to use the authorization code grant.', 400);
             if (!authRequest.code_challenge_method)
                 authRequest.code_challenge_method = 'plain'; // Default
             if (authRequest.code_challenge_method !== 'plain' &&
                 authRequest.code_challenge_method !== 'S256')
-                throw makeOAuthError(400, 'invalid_request', 'unsupported code_challenge_method; expected "plain" or "S256".');
+                throw makeError('unsupported code_challenge_method; expected "plain" or "S256".', 400);
         }
 
         // Success
