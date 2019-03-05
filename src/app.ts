@@ -224,6 +224,8 @@ app.initApp = function (authServerConfig: WickedAuthServer, callback: SimpleCall
     }
 
     app.get(basePath + '/profile', nocache(), utilsOAuth2.getProfile);
+    app.get(basePath + '/userinfo', nocache(), utilsOAuth2.getProfile);
+    app.post(basePath + '/userinfo', nocache(), utilsOAuth2.getProfile);
 
     app.get(basePath + '/logout', nocache(), function (req, res, next) {
         debug(basePath + '/logout');
