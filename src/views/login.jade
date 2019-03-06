@@ -65,7 +65,10 @@ block content
     
     if forgotPasswordUrl
         h5
-            a(href='#{baseUrl}/#{forgotPasswordUrl}') #{i18n.forgot_password}
+            if forgotPasswordUrl.startsWith('http')
+                a(href='#{forgotPasswordUrl}') #{i18n.forgot_password}
+            else
+                a(href='#{baseUrl}/#{forgotPasswordUrl}') #{i18n.forgot_password}
         
     if !disableSignup
         h5
