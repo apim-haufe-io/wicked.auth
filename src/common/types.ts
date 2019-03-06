@@ -124,7 +124,8 @@ export interface LocalIdpConfig {
 
 export interface ExternalIdpConfig {
     validateUserPassUrl: string,
-    allowRefreshUrl: string
+    allowRefreshUrl: string,
+    forgotPasswordUrl: string,
 }
 
 export interface OAuth2IdpConfigBase {

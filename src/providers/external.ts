@@ -160,6 +160,8 @@ export class ExternalIdP implements IdentityProvider {
         viewModel.errorMessage = flashMessage;
         viewModel.disableSignup = true;
         delete viewModel.forgotPasswordUrl;
+        if (this.authMethodConfig.forgotPasswordUrl)
+            viewModel.forgotPasswordUrl = this.authMethodConfig.forgotPasswordUrl;
         if (prefillUsername)
             viewModel.prefillUsername = prefillUsername;
         utils.render(req, res, 'login', viewModel, authRequest);
