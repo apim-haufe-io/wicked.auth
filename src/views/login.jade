@@ -49,12 +49,14 @@ block content
 
         .form-group
             label(for='username') #{i18n.username}:
-            input(type='string' name='username' id='username' value='#{predefUsername}').form-control
+            -var usernameFocus = predefUsername ? false : true;
+            input(type='string' name='username' id='username' value='#{predefUsername}' autofocus=usernameFocus).form-control
             small 
                 span(id='errorUsername' style='color:red')
         .form-group
             label(for='password') #{i18n.password}:
-            input(type='password' name='password' id='password').form-control
+            -var passwordFocus = predefUsername ? true : false;
+            input(type='password' name='password' id='password' autofocus=passwordFocus).form-control
             small
                 span(id='errorPassword' style='color:red')
         button(class='btn btn-lg btn-primary btn-block' type='submit') #{i18n.login}

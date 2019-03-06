@@ -42,7 +42,8 @@ export class ExternalIdP implements IdentityProvider {
 
     public authorizeWithUi(req, res, next, authRequest: AuthRequest) {
         // Render a login mask...
-        this.renderLogin(req, res, next, null);
+        const prefillUsername = authRequest.prefill_username;
+        this.renderLogin(req, res, next, null, prefillUsername);
     }
 
     public authorizeByUserPass = async (user, pass, callback: Callback<AuthResponse>) => {

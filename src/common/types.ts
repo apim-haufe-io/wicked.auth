@@ -51,6 +51,7 @@ export interface AuthRequest extends OAuth2Request {
     trusted?: boolean,
     scope_differs?: boolean,
     plain?: boolean,
+    prefill_username?: string,
     validNamespaces?: string[],
     // Used in the SAML case
     requestId?: string

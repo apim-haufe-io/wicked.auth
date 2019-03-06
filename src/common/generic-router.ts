@@ -428,6 +428,7 @@ export class GenericOAuth2Router {
             const givenNamespace = req.query.namespace;
             const givenCodeChallenge = req.query.code_challenge;
             const givenCodeChallengeMethod = req.query.code_challenge_method;
+            const givenPrefillUsername = req.query.prefill_username;
 
             const authRequest = instance.initAuthRequest(req);
             authRequest.api_id = apiId;
@@ -441,6 +442,8 @@ export class GenericOAuth2Router {
             // PKCE, RFC 7636
             authRequest.code_challenge = givenCodeChallenge;
             authRequest.code_challenge_method = givenCodeChallengeMethod;
+            // Support prefilled username
+            authRequest.prefill_username = givenPrefillUsername;
 
             // Validate parameters first now (TODO: This is pbly feasible centrally,
             // it will be the same for all Auth Methods).
