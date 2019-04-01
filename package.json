@@ -35,7 +35,7 @@
   "homepage": "https://github.com/Haufe-Lexware/wicked.portal-auth",
   "dependencies": {
     "@types/node": "^10.3.2",
-    "async": "2.6.1",
+    "async": "2.6.2",
     "body-parser": "1.18.3",
     "bootstrap": "3.4.1",
     "connect-redis": "3.3.2",
@@ -57,7 +57,7 @@
     "passport-twitter": "1.0.4",
     "portal-env": "file:../portal-env.tgz",
     "redis": "2.8.0",
-    "request": "2.87.0",
+    "request": "2.88.0",
     "saml2-js": "2.0.3",
     "session-file-store": "1.0.0",
     "twitter": "1.7.1",
