@@ -2,6 +2,7 @@
 
 var { debug, info, warn, error } = require('portal-env').Logger('portal:sessionstore');
 const redis = require('redis');
+const stringifySafe = require('json-stringify-safe');
 import * as wicked from 'wicked-sdk';
 import { WickedSessionStoreType } from 'wicked-sdk';
 
@@ -35,7 +36,7 @@ export const redisConnection = {
         // Use the predefined client, no need to create a second one.
         sessionStoreOptions.client = redisConnection.getRedis();
 
-        debug('Using redis session store with options ' + JSON.stringify(sessionStoreOptions));
+        debug('Using redis session store with options ' + stringifySafe(sessionStoreOptions));
 
         return new SessionStore(sessionStoreOptions);
     }
