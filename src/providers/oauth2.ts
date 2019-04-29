@@ -6,6 +6,7 @@ import { OidcProfile, Callback, WickedApi } from 'wicked-sdk';
 const { debug, info, warn, error } = require('portal-env').Logger('portal-auth:oauth2');
 
 const Router = require('express').Router;
+const request = require('request');
 const passport = require('passport');
 var OAuth2Strategy = require('passport-oauth').OAuth2Strategy;
 var jwt = require('jsonwebtoken');
@@ -185,10 +186,39 @@ export class OAuth2IdP implements IdentityProvider {
      * @param {*} callback Callback method, `function(err, authenticationData)`
      */
     public authorizeByUserPass(user: string, pass: string, callback: Callback<AuthResponse>) {
-        // Verify username and password, if possible.
-        // For Github, this is not possible, so we will just return an
-        // error message.
-        return failOAuth(400, 'unsupported_grant_type', 'The generic OAuth2 provider does not support authorizing headless with username and password', callback);
+        let scope: string[] = null;
+        if (this.authMethodConfig.endpoints.authorizeScope) {
+            scope = this.authMethodConfig.endpoints.authorizeScope.split(' ');
+        }
+        const postBody = {
+            grant_type: "password",
+            username: user,
+            password: pass,
+            client_id: this.authMethodConfig.clientId,
+            client_secret: this.authMethodConfig.clientSecret,
+            scope: scope,
+        };
+        const uri = this.authMethodConfig.endpoints.tokenEndpoint;
+        const instance = this;
+        request.post({
+            uri,
+            body: postBody,
+            json: true
+        }, function (err, res, responseBody) {
+            try {
+                const jsonResponse = utils.getJson(responseBody);
+                if (res.statusCode !== 200 || jsonResponse.error) {
+                    const err = makeError(`External IDP ${instance.authMethodId} returned an error or an unexpected status code (${res.statusCode})`, res.statusCode);
+                    if (jsonResponse.error)
+                        err.internalError = new Error(`Error: ${jsonResponse.error}, description. ${jsonResponse.error_description || '<no description>'}`);
+                    return callback(err);
+                }
+                return instance.verifyProfile(null,jsonResponse.access_token, null, null, callback);
+            } catch (err) {
+                error(err);
+                return callback(err);
+            }
+        });
     };
 
     public checkRefreshToken(tokenInfo, apiInfo: WickedApi, callback: Callback<CheckRefreshDecision>) {
