@@ -5,7 +5,7 @@ import { AuthRequest, EndpointDefinition, AuthResponse, IdentityProvider, IdpOpt
 import { OidcProfile, Callback, WickedApi } from 'wicked-sdk';
 const { debug, info, warn, error } = require('portal-env').Logger('portal-auth:saml');
 const Router = require('express').Router;
-const saml2 = require('saml2-js');
+const saml2 = require('wicked-saml2-js');
 const mustache = require('mustache');
 const qs = require('querystring');
 
@@ -65,7 +65,7 @@ export class SamlIdP implements IdentityProvider {
     public supportsPrompt(): boolean {
         // This is currently not supported by saml2-js, see the following PR:
         // https://github.com/Clever/saml2/pull/135
-        return false;
+        return true;
     }
 
     public getRouter() {
@@ -86,11 +86,26 @@ export class SamlIdP implements IdentityProvider {
      * or similar).
      */
     public authorizeWithUi(req, res, next, authRequest: AuthRequest) {
+        debug('authorizeWithUi()');
+        const instance = this;
         // Do your thing...
         const options = {} as any;
         if (authRequest.prompt == 'login') {
             debug('Forcing authentication step (SAML)');
             options.force_authn = true;
+        } else if (authRequest.prompt === 'none') {
+            debug('Forcing non-interactive login (SAML)');
+            if (!this.basePath.startsWith('https')) {
+                // Non-interactive login is not supported if we're not using https,
+                // as the browsers ask the user whether it's okay to post a non-secure
+                // form. This cannot be answered in non-interactive mode.
+                error('Attempt to do non-interactive authentication over http - THIS DOES NOT WORK.');
+                (async () => {
+                    await instance.genericFlow.failAuthorizeFlow(req, res, next, 'invalid_request', 'SAML2 cannot answer non-interactive requests over http. Must use https.');
+                })();
+                return;
+            }
+            options.is_passive = true;
         }
         this.serviceProvider.create_login_request_url(this.identityProvider, options, function (err, loginUrl, requestId) {
             if (err)
@@ -208,8 +223,32 @@ export class SamlIdP implements IdentityProvider {
             if (!requestId)
                 return failMessage(400, 'Invalid state for SAML Assert: Request ID is not present', next);
             instance.assert(req, requestId, function (err, samlResponse) {
-                if (err)
-                    return failError(500, err, next);
+                if (err) {
+                    error('SAML2 assert failed, error:');
+                    error(JSON.stringify(err));
+                    // Let's see if we can make some sense from this...
+                    let errorMessage = 'server_error';
+                    let errorDescription = err.message;
+                    const responseProp = 'urn:oasis:names:tc:SAML:2.0:status:Responder'
+                    if (err.extra && err.extra.status && err.extra.status[responseProp]
+                        && Array.isArray(err.extra.status[responseProp])
+                        && err.extra.status[responseProp].length > 0) {
+                        switch (err.extra.status[responseProp][0]) {
+                            case 'urn:oasis:names:tc:SAML:2.0:status:NoPassive':
+                                errorMessage = 'login_required';
+                                errorDescription = 'Interactive login is required'
+                                break;
+                            default:
+                                errorDescription = err.extra.status[responseProp];
+                                break;
+                        }
+                    }
+                    (async () => {
+                        await instance.genericFlow.failAuthorizeFlow(req, res, next, errorMessage, errorDescription);
+                    })();
+                    return;
+                    //return failError(500, err, next);
+                }
                 debug(samlResponse);
                 instance.createAuthResponse(samlResponse, function (err, authResponse) {
                     if (err)
