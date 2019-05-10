@@ -209,24 +209,30 @@ export class OAuth2IdP implements IdentityProvider {
      * @param {*} callback Callback method, `function(err, authenticationData)`
      */
     public authorizeByUserPass(user: string, pass: string, callback: Callback<AuthResponse>) {
-        let scope: string[] = null;
-        if (this.authMethodConfig.endpoints.authorizeScope) {
-            scope = this.authMethodConfig.endpoints.authorizeScope.split(' ');
-        }
         const postBody = {
             grant_type: "password",
             username: user,
             password: pass,
             client_id: this.authMethodConfig.clientId,
             client_secret: this.authMethodConfig.clientSecret,
-            scope: scope,
+            scope: this.authMethodConfig.endpoints.authorizeScope
         };
+        const config = utils.getJson(this.authMethodConfig);
+        if (config.params){
+            Object.keys(config.params).map((key) => {
+                postBody[key]=config.params[key];
+            });
+        }
         const uri = this.authMethodConfig.endpoints.tokenEndpoint;
         const instance = this;
+        const postBodyParams = Object.keys(postBody).map((key) => {
+            return `${encodeURIComponent(key)}=${encodeURIComponent(postBody[key])}`;
+        }).join('&');
+
         request.post({
+            headers: {'Content-Type': 'application/x-www-form-urlencoded'},
             uri,
-            body: postBody,
-            json: true
+            body: postBodyParams
         }, function (err, res, responseBody) {
             try {
                 const jsonResponse = utils.getJson(responseBody);
