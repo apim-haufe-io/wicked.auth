@@ -2,7 +2,7 @@
 
 import { GenericOAuth2Router } from '../common/generic-router';
 import { IdpOptions, IdentityProvider, GoogleIdpConfig, ExpressHandler, AuthResponse, EndpointDefinition, AuthRequest, CheckRefreshDecision } from '../common/types';
-import { OidcProfile, Callback, WickedApi } from 'wicked-sdk';
+import { OidcProfile, Callback, WickedApi, getAuthServer } from 'wicked-sdk';
 const { debug, info, warn, error } = require('portal-env').Logger('portal-auth:google');
 const Router = require('express').Router;
 
@@ -24,8 +24,9 @@ export class GoogleIdP implements IdentityProvider {
     private authMethodConfig: GoogleIdpConfig;
     private options: IdpOptions;
 
-    private authenticateWithGoogle: ExpressHandler;
-    private authenticateCallback: ExpressHandler;
+    private baseAuthenticateSettings: any;
+    // private authenticateWithGoogle: ExpressHandler;
+    // private authenticateCallback: ExpressHandler;
 
     constructor(basePath: string, authMethodId: string, authMethodConfig: GoogleIdpConfig, options: IdpOptions) {
         this.genericFlow = new GenericOAuth2Router(basePath, authMethodId);
@@ -42,20 +43,21 @@ export class GoogleIdP implements IdentityProvider {
         const callbackUrl = `${options.externalUrlBase}/${authMethodId}/callback`;
         info(`Google Authentication: Expected callback URL: ${callbackUrl}`);
 
-        const authenticateSettings = {
+        this.baseAuthenticateSettings = {
             session: false,
-            scope: ['profile', 'email'],
-            failureRedirect: `${options.basePath}/failure`
+            scope: ['profile', 'email']
         };
-        // Configure passport
-        passport.use(authMethodId, new GoogleStrategy({
+        const googleStrategy = new GoogleStrategy({
             clientID: authMethodConfig.clientId,
             clientSecret: authMethodConfig.clientSecret,
             callbackURL: callbackUrl
-        }, this.verifyProfile));
+        }, this.verifyProfile);
+        googleStrategy.authorizationParams = this.authorizationParams;
+        // Configure passport
+        passport.use(authMethodId, googleStrategy);
 
-        this.authenticateWithGoogle = passport.authenticate(authMethodId, authenticateSettings);
-        this.authenticateCallback = passport.authenticate(authMethodId, authenticateSettings);
+        // this.authenticateWithGoogle = passport.authenticate(authMethodId, authenticateSettings);
+        // this.authenticateCallback = passport.authenticate(authMethodId, authenticateSettings);
 
         this.genericFlow.initIdP(this);
     }
@@ -64,14 +66,32 @@ export class GoogleIdP implements IdentityProvider {
         return "google";
     }
 
+    public supportsPrompt(): boolean {
+        return true;
+    }
+
     public getRouter() {
         return this.genericFlow.getRouter();
     }
 
-    public authorizeWithUi(req, res, authRequest: AuthRequest) {
+    private authorizationParams = (options) => {
+        debug('authorizationParams()');
+        const params: any = {};
+        if (options.prompt)
+            params.prompt = options.prompt;
+        return params;        
+    }
+
+    public authorizeWithUi(req, res, next, authRequest: AuthRequest) {
         // Do your thing...
         // Redirect to the Google login page
-        return this.authenticateWithGoogle(req, res);
+        // return this.authenticateWithGoogle(req, res);
+        let additionalSettings: any = {};
+        if (authRequest.prompt) {
+            additionalSettings.prompt = authRequest.prompt;
+        }
+        const settings = Object.assign({}, this.baseAuthenticateSettings, additionalSettings);
+        passport.authenticate(this.authMethodId, settings)(req, res, next);
     };
 
     public endpoints(): EndpointDefinition[] {
@@ -79,7 +99,7 @@ export class GoogleIdP implements IdentityProvider {
             {
                 method: 'get',
                 uri: '/callback',
-                middleware: this.authenticateCallback,
+                // middleware: this.authenticateCallback,
                 handler: this.callbackHandler
             }
         ];
@@ -160,10 +180,30 @@ export class GoogleIdP implements IdentityProvider {
     private callbackHandler = (req, res, next) => {
         // Here we want to assemble the default profile and stuff.
         debug('callbackHandler()');
-        // The authResponse is now in req.user (for this call), and we can pass that on as an authResponse
-        // to continueAuthorizeFlow. Note the usage of "session: false", so that this data is NOT stored
-        // automatically in the user session, which passport usually does by default.
-        const authResponse = req.user;
-        this.genericFlow.continueAuthorizeFlow(req, res, next, authResponse);
+        const instance = this;
+        // Do we have errors from the upstream IdP here?
+        if (req.query && req.query.error) {
+            warn(`callbackHandler detected ${req.query.error} error`);
+            (async() => {
+                await instance.genericFlow.failAuthorizeFlow(req, res, next, req.query.error, req.query.error_description);
+            })();
+            return;
+        }
+
+        // We don't have any explicit and direct errors, so we will probably have
+        // an authorization code. Delegate this to passport again, and then continue
+        // from there when passport calls the "next" function, which is passed inline
+        // here.
+        passport.authenticate(this.authMethodId, this.baseAuthenticateSettings)(req, res, function (err) {
+            if (err)
+                return next(err);
+            // The authResponse is now in req.user (for this call), and we can pass that on as an authResponse
+            // to continueAuthorizeFlow. Note the usage of "session: false", so that this data is NOT stored
+            // automatically in the user session, which passport usually does by default.
+            debug('Successfully authenticated via passport.');
+            const authResponse = req.user;
+            debug(JSON.stringify(authResponse));
+            instance.genericFlow.continueAuthorizeFlow(req, res, next, authResponse);
+        });
     }
 }

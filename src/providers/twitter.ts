@@ -80,6 +80,10 @@ export class TwitterIdP implements IdentityProvider {
         return "twitter";
     }
 
+    public supportsPrompt(): boolean {
+        return false;
+    }
+
     public getRouter() {
         return this.genericFlow.getRouter();
     };

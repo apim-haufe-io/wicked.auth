@@ -29,9 +29,13 @@ export class DummyIdP implements IdentityProvider {
         return "dummy";
     }
 
+    public supportsPrompt(): boolean {
+        return false;
+    }
+
     public getRouter() {
         return this.genericFlow.getRouter();
-    };
+    }
 
     public authorizeWithUi(req, res, next, authRequest: AuthRequest): void {
         // Do your thing...

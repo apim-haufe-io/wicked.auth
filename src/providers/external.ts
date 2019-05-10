@@ -36,6 +36,10 @@ export class ExternalIdP implements IdentityProvider {
         return "local";
     }
 
+    public supportsPrompt(): boolean {
+        return false;
+    }
+
     public getRouter() {
         return this.genericFlow.getRouter();
     }

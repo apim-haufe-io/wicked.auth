@@ -62,6 +62,12 @@ export class SamlIdP implements IdentityProvider {
         return "saml";
     }
 
+    public supportsPrompt(): boolean {
+        // This is currently not supported by saml2-js, see the following PR:
+        // https://github.com/Clever/saml2/pull/135
+        return false;
+    }
+
     public getRouter() {
         return this.genericFlow.getRouter();
     }

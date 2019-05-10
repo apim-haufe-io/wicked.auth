@@ -104,6 +104,7 @@ export interface CheckRefreshDecision {
 
 export interface IdentityProvider {
     getType: () => string,
+    supportsPrompt: () => boolean,
     getRouter: () => any,
     authorizeWithUi: (req, res, next, authRequest: AuthRequest) => void,
     logoutHook?: (req, res, next, redirect_uri: string) => boolean,
@@ -166,7 +167,11 @@ export interface OAuth2IdpConfig extends OAuth2IdpConfigBase {
     // Default group mappings, maps given groups to wicked groups
     defaultGroups?: {
         [groupName: string]: string
-    }
+    },
+    // Additional parameters for authorization request
+    params?: any,
+    // Specify "false" to not attempt authentication with "prompt=none" in case provided with /authorize call
+    doesNotSupportPrompt?: boolean
 }
 
 export interface SamlSpOptions {

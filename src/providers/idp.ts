@@ -39,6 +39,12 @@ export class IdP implements IdentityProvider {
         return this.genericFlow.getRouter();
     }
 
+    public supportsPrompt() {
+        // Return true or false depending on whether the IdP supports UI-less authentications;
+        // this is for example when using prompt=none for OAuth2, or is_passive for SAML2
+        return false;
+    }
+
     /**
      * In case the user isn't already authenticated, this method will
      * be called from the generic flow implementation. It is assumed to

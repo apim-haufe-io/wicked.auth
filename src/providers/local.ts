@@ -34,6 +34,11 @@ export class LocalIdP implements IdentityProvider {
         return "local";
     }
 
+    public supportsPrompt(): boolean {
+        // Ahem. This can be fixed with a "remember me" type of feature.
+        return false;
+    }
+
     public getRouter() {
         return this.genericFlow.getRouter();
     }
