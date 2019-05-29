@@ -945,7 +945,7 @@ export class GenericOAuth2Router {
             let msg = 'Scope validation with external system disallowed login (property "allow" is not present or not set to true)';
             if (scopeResponse.error_message)
                 msg += `: ${scopeResponse.error_message}`;
-            return failMessage(403, msg, next);
+            return failRedirect('access_denied', msg, authRequest.redirect_uri, next);
         }
 
         if (scopeResponse.authenticated_scope)
