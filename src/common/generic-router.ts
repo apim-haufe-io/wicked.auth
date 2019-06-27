@@ -1355,12 +1355,18 @@ export class GenericOAuth2Router {
             // Passthrough users and passthrough scopes
             try {
                 const passthroughScopes = await instance.resolvePassthroughScopeAsync(tokenRequest.scope, authResponse.defaultProfile, apiInfo.passthroughScopeUrl);
+                if (!passthroughScopes.allow) {
+                    let msg = 'Scope validation with external system disallowed login (property "allow" is not present or not set to true)';
+                    if (passthroughScopes.error_message)
+                        msg += `: ${passthroughScopes.error_message}`;
+                    throw makeOAuthError(403, msg, 'could not resolve passthrough API scopes from 3rd party');
+                }
                 tokenRequest.scope = passthroughScopes.authenticated_scope || [];
                 tokenRequest.authenticated_userid = passthroughScopes.authenticated_userid;
                 tokenRequest.authenticated_userid_is_verbose = true;
             } catch (err) {
                 error(err);
-                throw makeOAuthError(err.statusCode || 500, 'server_error', 'could not resolve passthrough API scopes from 3rd party');
+                throw makeOAuthError(err.status || 500, 'server_error', err.oauthError || 'could not resolve passthrough API scopes from 3rd party');
             }
         }
         // else: wicked backed users and scopes managed by wicked; standard case.
