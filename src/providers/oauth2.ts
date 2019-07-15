@@ -8,6 +8,7 @@ const { debug, info, warn, error } = require('portal-env').Logger('portal-auth:o
 const Router = require('express').Router;
 const request = require('request');
 const passport = require('passport');
+const { Issuer } = require('openid-client');
 var OAuth2Strategy = require('passport-oauth').OAuth2Strategy;
 var jwt = require('jsonwebtoken');
 
@@ -70,7 +71,29 @@ export class OAuth2IdP implements IdentityProvider {
         oauthStrategy.authorizationParams = this.authorizationParams;
 
         oauthStrategy.userProfile = function (accessToken, done) {
-            done(null, accessToken);
+            debug(`userProfile(${this.authMethodId})`);
+            if (authMethodConfig.retrieveProfile) {
+                debug(`userProfile(${this.authMethodId}): Retrieve userProfile from profileEndpoint`);
+                let issuer = new Issuer({
+                    issuer: "IdP Issuer",
+                    authorization_endpoint: authMethodConfig.endpoints.authorizeEndpoint,
+                    token_endpoint: authMethodConfig.endpoints.tokenEndpoint,
+                    userinfo_endpoint: authMethodConfig.endpoints.profileEndpoint});
+                let client = new issuer.Client({
+                    client_id: authMethodConfig.clientId,
+                    client_secret: authMethodConfig.clientSecret,
+                    redirect_uris: [callbackUrl],
+                    response_types: ['code']
+                });                
+                client.userinfo(accessToken)
+                    .then(function(userInfo) {
+                        debug(`retrieveUserProfileCallback: Successfully retrieved profile from endpoint`);
+                        done(null, userInfo);
+                    })
+
+            } else {
+                done(null, accessToken);
+            }
         };
 
         passport.use(authMethodId, oauthStrategy);
@@ -101,28 +124,20 @@ export class OAuth2IdP implements IdentityProvider {
         return this.genericFlow.getRouter();
     }
 
-    private verifyProfile = (req, accessToken, refreshTokenNotUsed, profileNotUsed, done) => {
+    private verifyProfile = (req, accessToken, refreshTokenNotUsed, profile, done) => {
         debug(`verifyProfile(${this.authMethodId})`);
 
-        let profile;
-        // Verify signing?
-        try {
-            if (this.authMethodConfig.certificate) {
-                // Decode Oauth token and verify that it has been signed by the given public cert
-                debug(`verifyProfile(${this.authMethodId}): Verifying JWT signature and decoding profile`);
-                profile = jwt.verify(accessToken, this.authMethodConfig.certificate);
-                debug(`verifyProfile(${this.authMethodId}): Verified JWT successfully`);
-            } else {
-                // Do not check signing, just decode
-                warn(`verifyProfile(${this.authMethodId}): Decoding JWT signature, NOT verifying signature, "certificate" not specified`)
-                profile = jwt.decode(accessToken);
+        if (!this.authMethodConfig.retrieveProfile) {
+            // Verify signing?
+            try {
+                profile = this.verifyJWT(accessToken);
+                debug(`verifyProfile(${this.authMethodId}): Decoded JWT Profile:`);
+            } catch (ex) {
+                error(`verifyProfile(${this.authMethodId}): JWT decode/verification failed.`);
+                return done(null, false, { message: ex });
             }
-        } catch (ex) {
-            error(`verifyProfile(${this.authMethodId}): JWT decode/verification failed.`);
-            return done(null, false, { message: ex });
-        }
-
-        debug(`verifyProfile(${this.authMethodId}): Decoded JWT Profile:`);
+        } 
+        debug(`verifyProfile(${this.authMethodId}): Retrieved Profile:`);       
         debug(profile);
 
         try {
@@ -131,7 +146,19 @@ export class OAuth2IdP implements IdentityProvider {
         } catch (err) {
             return done(null, false, { message: err });
         }
-    };
+    }
+
+    private verifyJWT = (accessToken) => {
+        if (this.authMethodConfig.certificate) {
+            // Decode Oauth token and verify that it has been signed by the given public cert
+            debug(`verifyJWT(${this.authMethodId}): Verifying JWT signature and decoding profile`);
+            return jwt.verify(accessToken, this.authMethodConfig.certificate);
+        } else {
+            // Do not check signing, just decode
+            warn(`verifyJWT(${this.authMethodId}): Decoding JWT signature, NOT verifying signature, "certificate" not specified`)
+            return jwt.decode(accessToken);
+        }
+    }
 
     private authorizationParams = (options) => {
         let params: any = {};
@@ -148,7 +175,7 @@ export class OAuth2IdP implements IdentityProvider {
             params.prompt = options.prompt;
         }
         return params;
-    }
+    }    
 
     /**
      * In case the user isn't already authenticated, this method will
