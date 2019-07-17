@@ -48,13 +48,20 @@ block content
         -var predefUsername = prefillUsername ? prefillUsername : '';
 
         .form-group
-            label(for='username') #{i18n.username}:
+            if !usernamePrompt
+                label(for='username') #{i18n.username}:
+            else
+                label(for='username') #{usernamePrompt}:
             -var usernameFocus = predefUsername ? false : true;
             input(type='string' name='username' id='username' value='#{predefUsername}' autofocus=usernameFocus).form-control
             small 
                 span(id='errorUsername' style='color:red')
         .form-group
-            label(for='password') #{i18n.password}:
+            if !passwordPrompt
+                label(for='password') #{i18n.password}:
+            else
+                label(for='password') #{passwordPrompt}:
+
             -var passwordFocus = predefUsername ? true : false;
             input(type='password' name='password' id='password' autofocus=passwordFocus).form-control
             small

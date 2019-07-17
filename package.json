@@ -25,7 +25,8 @@
     "github",
     "facebook",
     "twitter",
-    "adfs"
+    "adfs",
+    "ldap"
   ],
   "author": "Martin Danielsson <martin.danielsson@haufe-lexware.com>",
   "license": "Apache-2.0",
@@ -47,6 +48,7 @@
     "jquery": "3.4.1",
     "json-stringify-safe": "5.0.1",
     "jsonwebtoken": "5.7.0",
+    "ldapts": "1.9.0",
     "morgan": "1.9.1",
     "mustache": "2.2.1",
     "nocache": "^2.0.0",

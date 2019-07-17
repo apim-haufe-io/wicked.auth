@@ -33,7 +33,7 @@ export class ExternalIdP implements IdentityProvider {
     }
 
     public getType(): string {
-        return "local";
+        return "external";
     }
 
     public supportsPrompt(): boolean {
@@ -77,7 +77,7 @@ export class ExternalIdP implements IdentityProvider {
                 allowRefresh: true
             });
         }
-        
+
         // Passthrough users case - the external IdP gets an authenticated user id which it knows (by structure),
         // and thus it makes sense to ask the IdP whether a refresh is allowed.
         const postBody = {
@@ -168,12 +168,16 @@ export class ExternalIdP implements IdentityProvider {
             viewModel.forgotPasswordUrl = this.authMethodConfig.forgotPasswordUrl;
         if (prefillUsername)
             viewModel.prefillUsername = prefillUsername;
+        if (this.authMethodConfig.usernamePrompt)
+            viewModel.usernamePrompt = this.authMethodConfig.usernamePrompt;
+        if (this.authMethodConfig.passwordPrompt)
+            viewModel.usernamePrompt = this.authMethodConfig.passwordPrompt;
         utils.render(req, res, 'login', viewModel, authRequest);
     }
 
     private loginUser = async (username: string, password: string): Promise<AuthResponse> => {
         const instance = this;
-        return new Promise<AuthResponse>(function(resolve, reject) {
+        return new Promise<AuthResponse>(function (resolve, reject) {
             instance.loginUser_(username, password, function (err, authResponse) {
                 err ? reject(err) : resolve(authResponse);
             });
@@ -215,7 +219,7 @@ export class ExternalIdP implements IdentityProvider {
 
     private createAuthResponse(response: ExternalUserPassResponse): AuthResponse {
         if (!response.profile)
-             throw makeError(`The external IdP ${this.authMethodId} did not return a profile property.`, 500);
+            throw makeError(`The external IdP ${this.authMethodId} did not return a profile property.`, 500);
         const profile = response.profile;
         if (!profile.sub)
             throw makeError(`The external IdP ${this.authMethodId} did not return a "sub" profile property.`, 500);
