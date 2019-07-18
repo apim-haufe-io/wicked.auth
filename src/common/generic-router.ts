@@ -975,6 +975,7 @@ export class GenericOAuth2Router {
         debug(`resolvePassthroughScope()`);
         const scopeRequest: PassthroughScopeRequest = {
             scope: scope,
+            auth_method: this.authMethodId,
             profile: profile
         }
         async.retry({
