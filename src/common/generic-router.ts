@@ -1731,5 +1731,4 @@ export class GenericOAuth2Router {
             return accessToken;
         }
     }
-
 }
