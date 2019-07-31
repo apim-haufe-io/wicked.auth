@@ -796,7 +796,7 @@ function validateTokenRequest(oauthInfo: TokenOAuthInfo, callback: TokenOAuthInf
 
 function base64UrlEncode(s) {    // https://tools.ietf.org/html/rfc7636#appendix-A
     let b = s.split('=')[0];
-    b = b.replace(/+/g, '-');
+    b = b.replace(/\+/g, '-');
     b = b.replace(/\//g, '_');
     return b;
 }
