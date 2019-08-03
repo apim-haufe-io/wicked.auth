@@ -469,6 +469,21 @@ export class SamlIdP implements IdentityProvider {
             profileModel[prop] = SamlIdP.getAttributeValue(samlResponse, prop);
         }
 
+        var profile = SamlIdP.mapSamlResponseToProfile(profileConfig, profileModel);
+        
+        if (!profile.sub) {
+            debug('No sub found after mapping user attributes. Trying to find attributes in user object directly')
+            profile = SamlIdP.mapSamlResponseToProfile(profileConfig, samlResponse.user)
+        }
+        if (samlConfig.trustUsers)
+            profile.email_verified = true;
+        debug('Built profile:');
+        debug(profile);
+
+        return profile;
+    }
+
+    private static mapSamlResponseToProfile(profileConfig, profileModel) : OidcProfile {
         // By checking that there are mappers for "sub" and "email", we can
         // be sure that we can map this to an OidcProfile.
         const profile = {} as OidcProfile;
@@ -481,14 +496,11 @@ export class SamlIdP implements IdentityProvider {
             else
                 warn(`buildProfile: Unknown type for property name ${propName}, expected number, boolean or string (with mustache templates)`);
         }
-        if (samlConfig.trustUsers)
-            profile.email_verified = true;
-        debug('Built profile:');
-        debug(profile);
-
         return profile;
     }
 }
+
+
 
 function isString(ob) {
     return (ob instanceof String || typeof ob === "string");
