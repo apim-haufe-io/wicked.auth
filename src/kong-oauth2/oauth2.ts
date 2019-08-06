@@ -794,6 +794,13 @@ function validateTokenRequest(oauthInfo: TokenOAuthInfo, callback: TokenOAuthInf
     return callback(null, oauthInfo);
 }
 
+function base64UrlEncode(s) {    // https://tools.ietf.org/html/rfc7636#appendix-A
+    let b = s.split('=')[0];
+    b = b.replace(/\+/g, '-');
+    b = b.replace(/\//g, '_');
+    return b;
+}
+
 function verifyPKCE(tokenRequest: TokenRequest): boolean {
     debug(`verifyPKCE(code_challenge: ${tokenRequest.code_challenge}, code_challenge_method: ${tokenRequest.code_challenge_method}, code_verifier: ${tokenRequest.code_verifier})`);
     switch (tokenRequest.code_challenge_method) {
@@ -803,7 +810,13 @@ function verifyPKCE(tokenRequest: TokenRequest): boolean {
             const sha256 = crypto.createHash('sha256');
             sha256.update(tokenRequest.code_verifier);
             const codeVerifierSHA256 = sha256.digest('base64');
-            return tokenRequest.code_challenge === codeVerifierSHA256;
+            if (tokenRequest.code_challenge === codeVerifierSHA256)
+                return true;
+            // Check base64-urlencode variants
+            if (tokenRequest.code_challenge === base64UrlEncode(codeVerifierSHA256))
+                return true;
+            if (base64UrlEncode(tokenRequest.code_challenge) === base64UrlEncode(codeVerifierSHA256))
+                return true;
     }
     error(`verifyPKCE: Unknown code_challenge_method ${tokenRequest.code_challenge_method}`);
     return false;

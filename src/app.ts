@@ -24,6 +24,7 @@ import { OAuth2IdP } from './providers/oauth2';
 // import { FacebookIdP } from './providers/facebook';
 import { SamlIdP } from './providers/saml';
 import { ExternalIdP } from './providers/external';
+import { LdapIdP } from './providers/ldap';
 
 import { StatusError } from './common/utils-fail';
 import { SimpleCallback } from './common/types';
@@ -212,6 +213,9 @@ app.initApp = function (authServerConfig: WickedAuthServer, callback: SimpleCall
                 break;
             case "saml":
                 idp = new SamlIdP(basePath, authMethod.name, authMethod.config, options);
+                break;
+            case "ldap":
+                idp = new LdapIdP(basePath, authMethod.name, authMethod.config, options);
                 break;
             default:
                 error('ERROR: Unknown authMethod type ' + authMethod.type);

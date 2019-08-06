@@ -73,8 +73,12 @@ export class GithubIdP implements IdentityProvider {
         this.genericFlow.initIdP(this);
     }
 
-    public getType() {
+    public getType(): string {
         return "github";
+    }
+
+    public supportsPrompt(): boolean {
+        return false;
     }
 
     public getRouter() {

@@ -389,7 +389,11 @@ export const utils = {
         return csrfToken;
     },
 
-    getSession(req, authMethodId): AuthSession {
+    hasSession(req, authMethodId: string): boolean {
+        return req.session && req.session[authMethodId];
+    },
+
+    getSession(req, authMethodId: string): AuthSession {
         if (!req.session || !req.session[authMethodId])
             throw new WickedError('Invalid session state, not using a browser?', 400);
         return req.session[authMethodId];
@@ -400,6 +404,10 @@ export const utils = {
         if (!req.session || !req.session[authMethodId])
             return;
         delete req.session[authMethodId];
+    },
+
+    hasAuthRequest: function (req, authMethodId: string): boolean {
+        return (req.session && req.session[authMethodId] && req.session[authMethodId].authRequest);
     },
 
     getAuthRequest: function (req, authMethodId: string): AuthRequest {

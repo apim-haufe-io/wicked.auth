@@ -110,12 +110,12 @@ export class GenericOAuth2Router {
                 }
 
                 // Check for authorization calls
-                if (utils.isLoggedIn(req, instance.authMethodId)) {
-                    const sessionData = utils.getSession(req, instance.authMethodId);
+                if (utils.hasAuthRequest(req, instance.authMethodId)) {
+                    const authRequest = utils.getAuthRequest(req, instance.authMethodId);
                     // We need an auth request to see how to answer
-                    if (sessionData.authRequest && sessionData.authRequest.redirect_uri) {
+                    if (authRequest && authRequest.redirect_uri) {
                         // We must create a redirect with the error message
-                        const redirectUri = `${sessionData.authRequest.redirect_uri}?error=${qs.escape(err.oauthError)}&error_description=${qs.escape(err.message)}`;
+                        const redirectUri = `${authRequest.redirect_uri}?error=${qs.escape(err.oauthError)}&error_description=${qs.escape(err.message)}`;
                         return res.redirect(redirectUri);
                     }
                 }
@@ -478,9 +478,20 @@ export class GenericOAuth2Router {
             // http://openid.net/specs/openid-connect-implicit-1_0.html#RequestParameters
             switch (authRequest.prompt) {
                 case 'none':
-                    if (!isLoggedIn)
-                        return failRedirect('login_required', 'user must be logged in interactively, cannot authorize without logged in user.', authRequest.redirect_uri, next);
-                    return instance.authorizeFlow(req, res, next);
+                    if (!isLoggedIn) {
+                        // Check whether we can delegate the "prompt" to the idp
+                        if (!instance.idp.supportsPrompt()) {
+                            // Nope. We will fail now, as the user is not logged in with the authorization server
+                            // at the moment.
+                            return failRedirect('login_required', 'user must be logged in interactively, cannot authorize without logged in user.', authRequest.redirect_uri, next);
+                        }
+                        // We will continue with authorizeWithUi below, and as the IDP
+                        // claims to know how to deal with "prompt=none", we assume it does.
+                    } else {
+                        return instance.authorizeFlow(req, res, next);
+                    }
+                    warn(`Delegating prompt=none login to identity provider implementation.`);
+                    break;
                 case 'login':
                     // Force login; wipe session data
                     if (isLoggedIn) {
@@ -498,7 +509,8 @@ export class GenericOAuth2Router {
                 return instance.continueAuthorizeFlow(req, res, next, authResponse);
             }
 
-            // Not logged in, or forced login
+            // Not logged in, or forced login; note that this can also be a "prompt=none" type of login, so it's actually
+            // not necessarily "with UI", but normally it is.
             return instance.idp.authorizeWithUi(req, res, next, authRequest);
         });
 
@@ -715,6 +727,14 @@ export class GenericOAuth2Router {
         return instance.registrationFlow(poolId, req, res, next);
     }
 
+    public failAuthorizeFlow = async (req, res, next, error: string, errorDescription: string) => {
+        debug('failAuthorizeFlow()');
+        debug(`error: ${error}`);
+        debug(`errorDescription: ${errorDescription}`);
+        const err: any = new Error(errorDescription);
+        err.oauthError = error;
+        return next(err);
+    }
 
     // =============================================
     // Helper methods
@@ -925,7 +945,7 @@ export class GenericOAuth2Router {
             let msg = 'Scope validation with external system disallowed login (property "allow" is not present or not set to true)';
             if (scopeResponse.error_message)
                 msg += `: ${scopeResponse.error_message}`;
-            return failMessage(403, msg, next);
+            return failRedirect('access_denied', msg, authRequest.redirect_uri, next);
         }
 
         if (scopeResponse.authenticated_scope)
@@ -955,6 +975,7 @@ export class GenericOAuth2Router {
         debug(`resolvePassthroughScope()`);
         const scopeRequest: PassthroughScopeRequest = {
             scope: scope,
+            auth_method: this.authMethodId,
             profile: profile
         }
         async.retry({
@@ -1335,12 +1356,18 @@ export class GenericOAuth2Router {
             // Passthrough users and passthrough scopes
             try {
                 const passthroughScopes = await instance.resolvePassthroughScopeAsync(tokenRequest.scope, authResponse.defaultProfile, apiInfo.passthroughScopeUrl);
+                if (!passthroughScopes.allow) {
+                    let msg = 'Scope validation with external system disallowed login (property "allow" is not present or not set to true)';
+                    if (passthroughScopes.error_message)
+                        msg += `: ${passthroughScopes.error_message}`;
+                    throw makeOAuthError(403, msg, 'could not resolve passthrough API scopes from 3rd party');
+                }
                 tokenRequest.scope = passthroughScopes.authenticated_scope || [];
                 tokenRequest.authenticated_userid = passthroughScopes.authenticated_userid;
                 tokenRequest.authenticated_userid_is_verbose = true;
             } catch (err) {
                 error(err);
-                throw makeOAuthError(err.statusCode || 500, 'server_error', 'could not resolve passthrough API scopes from 3rd party');
+                throw makeOAuthError(err.status || 500, 'server_error', err.oauthError || 'could not resolve passthrough API scopes from 3rd party');
             }
         }
         // else: wicked backed users and scopes managed by wicked; standard case.
@@ -1704,5 +1731,4 @@ export class GenericOAuth2Router {
             return accessToken;
         }
     }
-
 }

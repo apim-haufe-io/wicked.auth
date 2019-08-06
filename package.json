@@ -1,6 +1,6 @@
 {
   "name": "wicked.portal-auth",
-  "version": "1.0.0-rc.4",
+  "version": "1.0.0-rc.9",
   "description": "wicked.haufe.io Authorization Server",
   "main": "dist/authz.js",
   "scripts": {
@@ -25,7 +25,8 @@
     "github",
     "facebook",
     "twitter",
-    "adfs"
+    "adfs",
+    "ldap"
   ],
   "author": "Martin Danielsson <martin.danielsson@haufe-lexware.com>",
   "license": "Apache-2.0",
@@ -44,12 +45,14 @@
     "express": "4.16.3",
     "express-session": "1.15.6",
     "jade": "1.11.0",
-    "jquery": "3.3.1",
+    "jquery": "3.4.1",
     "json-stringify-safe": "5.0.1",
     "jsonwebtoken": "5.7.0",
+    "ldapts": "1.9.0",
     "morgan": "1.9.1",
     "mustache": "2.2.1",
     "nocache": "^2.0.0",
+    "openid-client": "2.5.0",
     "passport": "0.3.2",
     "passport-facebook": "2.1.1",
     "passport-github2": "0.1.10",
@@ -59,9 +62,9 @@
     "portal-env": "file:../portal-env.tgz",
     "redis": "2.8.0",
     "request": "2.88.0",
-    "saml2-js": "2.0.3",
     "session-file-store": "1.0.0",
     "twitter": "1.7.1",
+    "wicked-saml2-js": "3.0.0",
     "wicked-sdk": "file:wicked-sdk.tgz"
   },
   "jshintConfig": {
