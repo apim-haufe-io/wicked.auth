@@ -7,7 +7,9 @@
     "test": "echo \"Error: no test specified\" && exit 1",
     "build": "./build-typescript.sh",
     "build-and-start": "./build-typescript.sh && node ./dist/authz.js",
-    "start": "node ./dist/authz.js"
+    "start": "node ./dist/authz.js",
+    "snyk-protect": "snyk protect",
+    "prepublish": "npm run snyk-protect"
   },
   "repository": {
     "type": "git",
@@ -65,7 +67,8 @@
     "session-file-store": "1.0.0",
     "twitter": "1.7.1",
     "wicked-saml2-js": "3.0.0",
-    "wicked-sdk": "file:wicked-sdk.tgz"
+    "wicked-sdk": "file:wicked-sdk.tgz",
+    "snyk": "^1.190.0"
   },
   "jshintConfig": {
     "node": true,
@@ -74,5 +77,6 @@
   "devDependencies": {
     "@types/async": "2.0.49",
     "typescript": "3.4.1"
-  }
+  },
+  "snyk": true
 }
