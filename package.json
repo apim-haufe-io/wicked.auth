@@ -64,7 +64,7 @@
     "request": "2.88.0",
     "session-file-store": "1.0.0",
     "twitter": "1.7.1",
-    "wicked-saml2-js": "3.0.0",
+    "wicked-saml2-js": "4.0.1",
     "wicked-sdk": "file:wicked-sdk.tgz"
   },
   "jshintConfig": {
