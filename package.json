@@ -48,7 +48,7 @@
     "jquery": "3.4.1",
     "json-stringify-safe": "5.0.1",
     "jsonwebtoken": "5.7.0",
-    "ldapts": "1.9.0",
+    "ldapts": "2.10.1",
     "morgan": "1.9.1",
     "mustache": "2.2.1",
     "nocache": "^2.0.0",
